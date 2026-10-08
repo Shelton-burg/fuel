@@ -295,6 +295,18 @@ function homeHTML(p, s) {
         : `<button class="btn-primary wide" data-act="start" data-day="${dayId || nxt.id}" type="button">${dayId ? 'Start workout' : 'Train anyway'}</button>`}
     </div>`;
   }
+  const favs = S.favExercises();
+  const favHTML = `<div class="panel"><h2 class="ph2">My Exercises</h2>${favs.length
+    ? favs.map((nm) => {
+        const l = S.lastSetsFor(nm);
+        return `<button class="favrow" data-fav-open="${esc(nm)}" type="button">
+          <span class="fav-name">${esc(nm)}</span>
+          <span class="fav-w">${l ? `${fmtN(l.bestW, 1)} kg` : '—'}</span>
+          <span class="fav-when muted">${l ? esc(S.fmtDate(l.date)) : 'not logged yet'}</span>
+          <svg class="hrow-chev"><use href="#i-chev"/></svg>
+        </button>`;
+      }).join('')
+    : '<div class="fav-empty muted sm">Star any exercise with ☆ during a workout — your favourites live here with the weight you’re currently doing.</div>'}</div>`;
   const hist = S.sessionHistory(5).filter((h) => h && h.finishedAt);
   const histHTML = hist.length
     ? `<div class="panel"><h2 class="ph2">Recent workouts</h2>${hist.map((h) => {
@@ -304,7 +316,7 @@ function homeHTML(p, s) {
     : '';
   return `<div class="page-head"><h1>Train</h1><p class="muted">${esc(p.name)} · <button class="link-btn inline" data-act="chgprog" type="button">Change program</button> · <button class="link-btn inline" data-act="progress" type="button">Progress</button></p></div>
     ${ui.justFinished ? '<div class="finish-banner">Workout saved — 💪</div>' : ''}
-    ${today}${histHTML}`;
+    ${today}${favHTML}${histHTML}`;
 }
 
 /* ── progress (charts) ── */
@@ -371,7 +383,8 @@ function progressHTML(p) {
       const d = pts.length > 1 ? Math.round((last.value - first.value) * 10) / 10 : 0;
       body = `<div class="chip-row scroll" id="prog-ex">${chips}</div>
         <div class="prog-hero"><div class="prog-big"><span id="prog-str-val">${last ? fmtN(last.value, 1) : '—'}</span><span class="unit">kg</span></div>
-        <div class="prog-delta ${d >= 0 ? 'up' : 'down'}" id="prog-str-delta">${pts.length > 1 ? `${d >= 0 ? '+' : ''}${d} kg since ${S.fmtDate(first.key)}` : 'First logged session'}</div></div>
+        <div class="prog-delta ${d >= 0 ? 'up' : 'down'}" id="prog-str-delta">${pts.length > 1 ? `${d >= 0 ? '+' : ''}${d} kg since ${S.fmtDate(first.key)}` : 'First logged session'}</div>
+        <button class="star-btn${S.isFavEx(sel) ? ' on' : ''}" data-act="fav" data-ex="${esc(sel)}" type="button" aria-label="Favourite ${esc(sel)}"><svg><use href="#i-star"/></svg></button></div>
         <div class="panel chart-panel"><canvas id="prog-strength" class="prog-canvas" height="150"></canvas>
         <div class="chart-legend"><span class="muted" id="prog-ex-name">${esc(sel)} · heaviest set each session</span><span class="muted">${pts.length} session${pts.length === 1 ? '' : 's'}</span></div></div>`;
     }
@@ -441,7 +454,8 @@ function sessionHTML(p, s) {
       <div class="ex-head">
         <div><span class="ex-title">${esc(ex.name)}</span>
         <span class="ex-sub">${ex.sets.length} × ${esc(ex.reps)} · rest ${fmtRest(ex.rest)} between sets</span></div>
-        ${exDone ? '<span class="ex-done-chip">Done ✓</span>' : ''}
+        <span class="ex-head-r">${exDone ? '<span class="ex-done-chip">Done ✓</span>' : ''}
+        <button class="star-btn${S.isFavEx(ex.name) ? ' on' : ''}" data-act="fav" data-ex="${esc(ex.name)}" type="button" aria-label="Favourite ${esc(ex.name)}"><svg><use href="#i-star"/></svg></button></span>
       </div>
       <div class="setrow head"><span class="sr-n">Set</span><span class="sr-target">Reps</span><span class="sr-in-head">kg</span><span class="sr-in-head">reps</span><span></span></div>
       ${rows}
@@ -470,6 +484,15 @@ document.addEventListener('click', (e) => {
     if (tab) { ui.progTab = tab.dataset.tab; renderTrain(); return; }
     const exChip = t.closest('[data-ex-pick]');
     if (exChip) { ui.progEx = exChip.dataset.exPick; renderTrain(); return; }
+  }
+  const frow = t.closest('[data-fav-open]');
+  if (frow) { ui.mode = 'progress'; ui.progTab = 'strength'; ui.progEx = frow.dataset.favOpen; renderTrain(); return; }
+  const favBtn = t.closest('[data-act="fav"]');
+  if (favBtn) {
+    const on = S.toggleFavEx(favBtn.dataset.ex);
+    toastT(on ? `★ ${favBtn.dataset.ex} added to My Exercises` : `${favBtn.dataset.ex} removed from favourites`);
+    renderTrain();
+    return;
   }
   const act = t.closest('[data-act]');
   if (act) {
@@ -566,6 +589,8 @@ function seedDemoTrainHistory() {
   }
 }
 
+window.addEventListener('fuel:refresh-train', () => { ui.mode = 'auto'; renderTrain(); });
+
 /* QA hook */
 window.__fuelTrain = {
   ff(sec) {
@@ -573,6 +598,8 @@ window.__fuelTrain = {
     if (s?.timer && !s.timer.fired) { s.timer.endAt -= sec * 1000; S.putSession(K(), s); onTick(); }
   },
   state() { return { ui: ui.mode, session: todaySession()?.finishedAt ? 'finished' : todaySession() ? 'active' : 'none' }; },
+  render() { renderTrain(); },
+  setTab(t) { ui.mode = 'progress'; ui.progTab = t; renderTrain(); },
 };
 
 trainBoot();

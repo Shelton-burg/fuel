@@ -45,6 +45,36 @@ $('#history-list').addEventListener('click', (e) => {
 });
 $$('.tab').forEach((t) => t.addEventListener('click', () => switchView(t.dataset.view)));
 
+/* ── goals & AI coach ── */
+let coachBusy = false;
+let goalsFrom = 'settings';
+
+$('#btn-open-goals').addEventListener('click', () => { goalsFrom = 'settings'; switchView('goals'); });
+
+$('#goals-body').addEventListener('click', (e) => {
+  const t = e.target;
+  const asp = t.closest('[data-aspir]');
+  if (asp) {
+    const a = asp.dataset.aspir;
+    S.setProfile({ aspir: a, ...GOAL_DEFAULTS[a] });
+    renderGoals(); vib(6); return;
+  }
+  if (t.closest('[data-goals-back]')) { renderSettings(); switchView(goalsFrom); return; }
+  if (t.closest('#btn-ask-coach')) { if (!coachBusy) askCoach(); return; }
+  if (t.closest('#btn-apply-targets')) { applyCoachPlan(); return; }
+  if (t.closest('#btn-apply-program')) { applyCoachProgram(); return; }
+});
+
+$('#goals-body').addEventListener('change', (e) => {
+  const t = e.target;
+  if (t.id === 'goal-target') S.setProfile({ targetWeight: t.value ? Math.round(+t.value * 10) / 10 : null });
+  else if (t.id === 'goal-rate') S.setProfile({ rate: +t.value || 0.5 });
+  else if (t.id === 'goal-cals') S.setProfile({ calPref: t.value ? Math.round(+t.value) : null });
+  else if (t.id === 'goal-notes') S.setProfile({ notes: t.value.slice(0, 400) });
+  else return;
+  renderGoals();
+});
+
 /* ══════════ day navigation ══════════ */
 const DAY_MS = 864e5;
 
@@ -131,6 +161,7 @@ function switchView(v) {
   vib(6);
   if (v === 'history') renderHistory();
   if (v === 'today') renderWeek();
+  if (v === 'goals') renderGoals();
 }
 
 /* ══════════ today render ══════════ */
@@ -800,6 +831,198 @@ function weightModal() {
       toast(`Weight logged — ${fmt(Math.round(v * 10) / 10, 1)} kg`);
     }
   });
+}
+
+/* ══════════ goals & AI coach (screen) ══════════ */
+const GOAL_DEFAULTS = {
+  lose: { goalType: 'lose', rate: 0.5 },
+  muscle: { goalType: 'gain', rate: 0.5 },
+  strength: { goalType: 'gain', rate: 0.25 },
+  maintain: { goalType: 'maintain', rate: 0.5 },
+};
+const ASPIR_LABELS = { lose: 'Lose fat', muscle: 'Build muscle', strength: 'Get stronger', maintain: 'Maintain' };
+const PROGRAM_NAMES = { strength: 'Foundation Strength 5×5', muscle: 'Muscle Builder', lean: 'Lean & Athletic' };
+
+function aspirOf(p) {
+  if (p.aspir) return p.aspir;
+  return p.goalType === 'lose' ? 'lose' : p.goalType === 'gain' ? 'muscle' : 'maintain';
+}
+
+function renderGoals() {
+  const body = $('#goals-body');
+  if (!body) return;
+  const st = S.getState();
+  const p = st.profile;
+  const aspir = aspirOf(p);
+  const t0 = S.computeTargets(p);
+  const cand = {
+    lose: S.computeTargets({ ...p, goalType: 'lose' }),
+    maintain: S.computeTargets({ ...p, goalType: 'maintain' }),
+    gain: S.computeTargets({ ...p, goalType: 'gain' }),
+  };
+  const chips = Object.entries(ASPIR_LABELS)
+    .map(([id, label]) => `<button class="chip${aspir === id ? ' sel' : ''}" data-aspir="${id}" type="button">${label}</button>`)
+    .join('');
+
+  const err = S.getSetting('coachPlanError');
+  const plan = S.getSetting('coachPlan');
+  let planHTML;
+  if (coachBusy) {
+    planHTML = `<div class="panel"><div class="loading-row">The coach is reading your stats, meals and workouts…</div></div>`;
+  } else if (plan) {
+    const r = plan.result || {};
+    const t2 = S.computeTargets({ ...p, goalType: r.strategy || 'maintain', rate: r.rateRecommend || p.rate });
+    const rateTxt = r.strategy === 'maintain' ? 'maintain your weight' : `${r.strategy === 'lose' ? 'lose' : 'gain'} ~${r.rateRecommend || 0.5} kg/week`;
+    const curPid = S.getSetting('programId');
+    const progRow = r.program && r.program !== 'keep'
+      ? (r.program === curPid
+        ? `<p class="muted sm plan-prog-line">Training: stay on <b>${PROGRAM_NAMES[r.program] || r.program}</b> — ${esc(r.programWhy || '')}</p>`
+        : `<div class="plan-prog"><div><b>Switch to ${PROGRAM_NAMES[r.program] || r.program}?</b><div class="muted sm">${esc(r.programWhy || '')}</div></div><button class="btn ghost sm-btn" id="btn-apply-program" type="button">Switch</button></div>`)
+      : `<p class="muted sm plan-prog-line">Training: ${esc(r.programWhy || 'Stay on your current program — it fits your goal.')}</p>`;
+    planHTML = `
+    <div class="panel plan-panel">
+      <div class="plan-head"><svg class="plan-spark"><use href="#i-spark"/></svg><h2 class="ph2">The coach's plan</h2></div>
+      <p class="plan-sum">${esc(r.summary || '')}</p>
+      <div class="plan-targets">
+        <div class="pt-big"><span>${fmt(t2.kcal)}</span><span class="unit">kcal / day</span></div>
+        <div class="pt-sub">to ${rateTxt} · P ${t2.protein} g · C ${t2.carbs} g · F ${t2.fat} g</div>
+        ${r.targetNote ? `<div class="pt-note muted">${esc(r.targetNote)}</div>` : ''}
+      </div>
+      ${r.strategyWhy ? `<p class="plan-why muted">${esc(r.strategyWhy)}</p>` : ''}
+      <button class="btn primary" id="btn-apply-targets" type="button">Use these targets</button>
+      ${progRow}
+      ${(r.focusExercises || []).length ? `<div class="plan-focus"><span class="muted sm">Focus lifts</span>${r.focusExercises.map((x) => `<span class="mini-chip">${esc(x)}</span>`).join('')}</div>` : ''}
+      ${(r.tips || []).length ? `<ul class="plan-tips">${r.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+      <div class="plan-foot"><span class="muted sm">Asked ${new Date(plan.ts).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}${plan.basisDays ? ` · from ${plan.basisDays} logged day${plan.basisDays === 1 ? '' : 's'}` : ''}</span>
+        <button class="link-btn" id="btn-ask-coach" type="button">Ask again</button></div>
+    </div>`;
+  } else {
+    planHTML = `
+    <div class="panel coach-cta">
+      ${err ? `<p class="coach-err">${esc(err)}</p>` : ''}
+      <button class="btn primary" id="btn-ask-coach" type="button">Ask the AI coach</button>
+      <p class="hint muted">Reads your stats, the last 2 weeks of eating, your weigh-ins and your workouts — then recommends your calories, macros and training.</p>
+    </div>`;
+  }
+
+  body.innerHTML = `
+    <button class="link-btn" data-goals-back type="button">← Back</button>
+
+    <div class="panel">
+      <h2 class="ph2">What do you want?</h2>
+      <div class="chip-row wrap" id="goal-aspir">${chips}</div>
+      <div class="field-2">
+        <label class="field"><span>Target weight (kg — optional)</span>
+          <input id="goal-target" type="number" inputmode="decimal" step="0.1" min="30" max="250" placeholder="${fmt(p.weight, 1)}" value="${p.targetWeight ?? ''}"></label>
+        <label class="field"><span>Pace (kg / week)</span>
+          <select id="goal-rate">
+            <option value="0.25"${+p.rate === 0.25 ? ' selected' : ''}>0.25 — slow &amp; steady</option>
+            <option value="0.5"${+p.rate === 0.5 ? ' selected' : ''}>0.5 — standard</option>
+            <option value="0.75"${+p.rate === 0.75 ? ' selected' : ''}>0.75 — ambitious</option>
+          </select></label>
+      </div>
+      <label class="field"><span>Want a specific daily calorie number? (optional)</span>
+        <input id="goal-cals" type="number" inputmode="numeric" min="1000" max="6000" placeholder="leave blank — the coach sets it" value="${p.calPref ?? ''}"></label>
+      <label class="field"><span>Anything I should know? (optional)</span>
+        <input id="goal-notes" type="text" maxlength="400" placeholder="injuries, what you enjoy, foods you avoid…" value="${esc(p.notes || '')}"></label>
+    </div>
+
+    <div class="panel">
+      <h2 class="ph2">Your numbers</h2>
+      <div class="goal-stats">
+        <div><b>${fmt(t0.bdee)}</b><span>burn / day</span></div>
+        <div><b>${fmt(cand.lose.kcal)}</b><span>lose fat</span></div>
+        <div><b>${fmt(cand.maintain.kcal)}</b><span>maintain</span></div>
+        <div><b>${fmt(cand.gain.kcal)}</b><span>gain muscle</span></div>
+      </div>
+      <p class="hint muted">Calculated from your age, height, weight and activity (Mifflin-St Jeor). The coach picks one of these — it never invents numbers.</p>
+    </div>
+
+    ${planHTML}
+  `;
+}
+
+function coachPayload() {
+  const st = S.getState();
+  const p = st.profile, g = st.goals;
+  const days = S.recentDays(14).filter((d) => d.any);
+  const avg = (f) => (days.length ? Math.round(days.reduce((a, d) => a + f(d.totals), 0) / days.length) : 0);
+  const fin = S.sessionHistory(90).filter((h) => h.finishedAt);
+  const cutoff = S.dayKey(new Date(Date.now() - 28 * 864e5));
+  const ws = S.weightSeries().filter((w) => w.key >= cutoff);
+  const dW = ws.length > 1 ? Math.round((ws[ws.length - 1].kg - ws[0].kg) * 10) / 10 : null;
+  const exAgg = {};
+  for (const h of fin) for (const ex of h.ex || []) {
+    const done = (ex.sets || []).filter((s2) => s2.done);
+    if (!done.length) continue;
+    const top = done.reduce((a, b) => ((b.w || 0) > (a.w || 0) ? b : a), done[0]);
+    exAgg[ex.name] = exAgg[ex.name] || { name: ex.name, bestW: 0, sessions: 0 };
+    exAgg[ex.name].bestW = Math.max(exAgg[ex.name].bestW, top.w || 0);
+    exAgg[ex.name].sessions++;
+  }
+  return {
+    profile: {
+      sex: p.sex, age: p.age, height: p.height, weight: p.weight, activity: p.activity,
+      aspiration: aspirOf(p), goalType: p.goalType, rate: p.rate,
+      targetWeight: p.targetWeight || null, noteFromUser: (p.notes || '').slice(0, 400), caloriePreference: p.calPref || null,
+    },
+    currentTargets: { kcal: g.kcal, protein: g.protein, carbs: g.carbs, fat: g.fat },
+    calorieCandidates: { lose: S.computeTargets({ ...p, goalType: 'lose' }).kcal, maintain: S.computeTargets({ ...p, goalType: 'maintain' }).kcal, gain: S.computeTargets({ ...p, goalType: 'gain' }).kcal },
+    intake: { daysLogged: days.length, avgKcal: avg((t) => t.kcal), avgProtein: avg((t) => t.p), avgCarbs: avg((t) => t.c), avgFat: avg((t) => t.f) },
+    weight: { latestKg: S.latestWeight()?.kg ?? null, change28dKg: dW },
+    training: {
+      programId: S.getSetting('programId') || null,
+      sessionsTotal: fin.length,
+      sessionsLast28d: fin.filter((h) => h.key >= cutoff).length,
+      topExercises: Object.values(exAgg).sort((a, b) => b.sessions - a.sessions).slice(0, 10).map((e2) => ({ name: e2.name, bestKg: e2.bestW, sessions: e2.sessions })),
+    },
+  };
+}
+
+async function askCoach() {
+  coachBusy = true;
+  renderGoals();
+  const payload = coachPayload();
+  try {
+    const r = await fetch('/api/coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.message || 'The coach is unavailable right now. Try again in a minute.');
+    S.setSetting('coachPlanError', null);
+    S.setSetting('coachPlan', { ts: Date.now(), result: j.result, basisDays: payload.intake.daysLogged });
+    toast('Coach plan ready');
+  } catch (e) {
+    S.setSetting('coachPlanError', String(e.message || e).slice(0, 200));
+    toast('Coach unavailable right now', 'i-x');
+  }
+  coachBusy = false;
+  renderGoals();
+}
+
+function applyCoachPlan() {
+  const plan = S.getSetting('coachPlan');
+  if (!plan?.result) return;
+  const r = plan.result;
+  const p = S.getState().profile;
+  const patch = { goalType: r.strategy || 'maintain', aspir: r.strategy === 'lose' ? 'lose' : r.strategy === 'maintain' ? 'maintain' : aspirOf(p) === 'strength' ? 'strength' : 'muscle' };
+  if ((r.strategy === 'lose' || r.strategy === 'gain') && r.rateRecommend) patch.rate = r.rateRecommend;
+  S.setProfile(patch);
+  const t = S.computeTargets({ ...p, ...patch });
+  S.setGoals({ kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat });
+  renderToday();
+  renderGoals();
+  vib(12);
+  toast(`Targets applied — ${fmt(t.kcal)} kcal`);
+}
+
+function applyCoachProgram() {
+  const plan = S.getSetting('coachPlan');
+  const pid = plan?.result?.program;
+  if (!pid || pid === 'keep' || pid === S.getSetting('programId')) { toast('Program unchanged'); return; }
+  S.setSetting('programId', pid);
+  window.dispatchEvent(new Event('fuel:refresh-train'));
+  toast(`Program switched — ${PROGRAM_NAMES[pid] || pid}`);
+  renderGoals();
+  vib(12);
 }
 
 /* ══════════ settings ══════════ */

@@ -42,6 +42,7 @@
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
   <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.5c3 3.6 6 6.8 6 10.5a6 6 0 0 1-12 0c0-3.7 3-6.9 6-10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
   <symbol id="i-body" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="2.8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 9.2c-3.1 0-5.6 1.7-5.6 4V16h11.2v-2.8c0-2.3-2.5-4-5.6-4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.6l2.6 5.2 5.8.9-4.2 4.1 1 5.7-5.2-2.7-5.2 2.7 1-5.7L3.6 9.7l5.8-.9z"/></symbol>
 </svg>
 
 <div id="app">
@@ -131,6 +132,12 @@
     <section id="view-settings" class="view">
       <div class="page-head"><h1>Settings</h1><p class="muted">Targets &amp; profile</p></div>
 
+      <div class="panel coach-entry">
+        <h2 class="panel-title">Goals &amp; AI Coach</h2>
+        <p class="hint muted" style="margin-top:0">Tell it what you want to achieve — it reads your stats, your food log and your workouts, then builds your plan.</p>
+        <button class="btn primary" id="btn-open-goals" type="button">Open Goals &amp; Coach</button>
+      </div>
+
       <div class="panel">
         <h2 class="panel-title">Daily target</h2>
         <div class="target-big"><span id="set-target-display">2,550</span><span class="unit">kcal</span></div>
@@ -186,6 +193,12 @@
       </div>
 
       <p class="app-foot muted">FUEL v0.1 · data stays on your device</p>
+    </section>
+
+    <!-- ══ GOALS & COACH ══ -->
+    <section id="view-goals" class="view">
+      <div class="page-head"><h1>Goals &amp; Coach</h1><p class="muted">Your goal in — a full plan out</p></div>
+      <div id="goals-body"></div>
     </section>
 
   </main>

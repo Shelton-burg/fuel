@@ -578,6 +578,49 @@ svg.sm { width:14px; height:14px; }
 .empty-state { text-align:center; padding:34px 20px; color:var(--muted); font-size:14px; }
 .loading-row { display:flex; align-items:center; justify-content:center; gap:10px; padding:22px; color:var(--muted); font-size:13.5px; }
 
+/* ── goals & AI coach ─────────────────────────────────────── */
+.chip-row.wrap { flex-wrap:wrap; }
+.goal-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin:10px 0 2px; }
+.goal-stats > div { background:var(--panel-2); border:1px solid var(--line); border-radius:12px; padding:9px 4px 8px; text-align:center; }
+.goal-stats b { font-family:var(--font-num); font-size:14px; display:block; font-variant-numeric:tabular-nums; }
+.goal-stats span { font-size:9.5px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.04em; display:block; margin-top:2px; }
+.coach-entry .btn { width:100%; }
+.coach-cta .btn { width:100%; }
+.coach-err { color:var(--bad); font-size:12.5px; margin-bottom:10px; }
+.plan-head { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.plan-spark { width:20px; height:20px; color:var(--amber); }
+.plan-head .ph2 { margin:0; }
+.plan-sum { font-size:13.5px; line-height:1.55; margin-bottom:12px; }
+.plan-targets { background:var(--panel-2); border:1px solid var(--line); border-radius:14px; padding:12px 14px; margin-bottom:10px; }
+.pt-big { display:flex; align-items:baseline; gap:6px; }
+.pt-big span:first-child { font-family:var(--font-num); font-size:30px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.pt-big .unit { font-size:13px; color:var(--muted); font-weight:600; }
+.pt-sub { font-size:12.5px; color:var(--muted); margin-top:2px; }
+.pt-note { font-size:12px; margin-top:6px; }
+.plan-why { font-size:12.5px; line-height:1.55; margin-bottom:12px; }
+.plan-prog { display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--panel-2); border:1px solid var(--line); border-radius:14px; padding:11px 12px; margin-top:10px; font-size:13px; }
+.plan-prog-line { margin-top:10px; line-height:1.5; }
+.sm-btn { padding:8px 14px; font-size:13px; }
+.plan-focus { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:12px; }
+.mini-chip { font-size:11.5px; font-weight:600; color:var(--amber); background:var(--amber-soft); border:1px solid rgba(255,161,23,.35); border-radius:999px; padding:4px 10px; }
+.plan-tips { margin:12px 0 4px; padding-left:18px; }
+.plan-tips li { font-size:13px; line-height:1.55; margin-bottom:6px; }
+.plan-foot { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; }
+/* ── favourites ── */
+.star-btn { background:none; border:0; padding:4px; color:var(--muted); flex:0 0 auto; }
+.star-btn svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linejoin:round; display:block; transition:transform .15s; }
+.star-btn.on { color:var(--amber); }
+.star-btn.on svg { fill:currentColor; }
+.star-btn:active { transform:scale(.9); }
+.ex-head-r { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+.favrow { display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; border-bottom:1px solid var(--line); padding:11px 2px; text-align:left; color:var(--text); }
+.favrow:last-of-type { border-bottom:0; }
+.favrow .fav-name { font-size:14.5px; font-weight:600; flex:1 1 auto; }
+.favrow .fav-w { font-family:var(--font-num); font-weight:700; font-size:14.5px; font-variant-numeric:tabular-nums; }
+.favrow .fav-when { font-size:11.5px; flex:0 0 auto; }
+.favrow .hrow-chev { width:14px; height:14px; }
+.fav-empty { padding:6px 2px 2px; line-height:1.55; }
+
 /* ── progress charts ─────────────────────────────────────── */
 button.stat-chip:active { transform:scale(.96); }
 .chip { font-size:13px; font-weight:600; color:var(--text-2); background:var(--panel-2); border:1px solid var(--line); padding:8px 14px; border-radius:999px; white-space:nowrap; }

@@ -4,7 +4,7 @@ const KEY = 'fuel-state-v1';
 
 export const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'];
 
-export const DEFAULT_PROFILE = { sex: 'male', age: 38, height: 180, weight: 85, activity: 1.55, goalType: 'maintain', rate: 0.5 };
+export const DEFAULT_PROFILE = { sex: 'male', age: 38, height: 180, weight: 85, activity: 1.55, goalType: 'maintain', rate: 0.5, aspir: 'maintain', targetWeight: null, notes: '', calPref: null };
 export const DEFAULT_GOALS = { kcal: 2550, protein: 180, carbs: 255, fat: 71 };
 
 function fresh() {
@@ -202,6 +202,17 @@ export function weightSeries() {
   return Object.entries(state.weights || {})
     .sort((a, b) => (a[0] < b[0] ? -1 : 1))
     .map(([key, kg]) => ({ key, kg }));
+}
+/* ── favourite exercises ── */
+export function favExercises() { return (state.settings || {}).favs || []; }
+export function isFavEx(name) { return favExercises().includes(name); }
+export function toggleFavEx(name) {
+  state.settings = state.settings || {};
+  const set = new Set(state.settings.favs || []);
+  if (set.has(name)) set.delete(name); else set.add(name);
+  state.settings.favs = [...set];
+  save();
+  return set.has(name);
 }
 export function getSetting(k) { return (state.settings || {})[k]; }
 export function setSetting(k, v) {

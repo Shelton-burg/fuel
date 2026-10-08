@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseLabel } from './label.mjs';
+import { coachAdvice } from './coach.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 4170;
@@ -30,7 +31,7 @@ const app = express();
 app.use(express.json({ limit: '6mb' }));
 app.use(express.static(join(__dirname, '..', 'public'), { extensions: ['html'] }));
 
-app.get('/api/health', (req, res) => res.json({ ok: true, ai: !!GEMINI_KEY }));
+app.get('/api/health', (req, res) => res.json({ ok: true, ai: !!GEMINI_KEY, coach: !!GEMINI_KEY }));
 
 app.post('/api/parse-label', async (req, res) => {
   try {
@@ -47,6 +48,20 @@ app.post('/api/parse-label', async (req, res) => {
   } catch (e) {
     console.error('[parse-label]', e.detail || e.message);
     res.status(502).json({ error: 'label_parse_failed', message: 'Could not read the label. Try again with a clearer, flatter photo.' });
+  }
+});
+
+app.post('/api/coach', async (req, res) => {
+  try {
+    if (!GEMINI_KEY) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
+    const payload = req.body && req.body.payload;
+    if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'no_payload' });
+    if (JSON.stringify(payload).length > 20000) return res.status(413).json({ error: 'too_large' });
+    const result = await coachAdvice(payload, GEMINI_KEY);
+    res.json({ ok: true, result });
+  } catch (e) {
+    console.error('[coach]', e.detail || e.message);
+    res.status(502).json({ error: 'coach_failed', message: 'The coach is unavailable right now — try again in a minute.' });
   }
 });
 
