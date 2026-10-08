@@ -290,12 +290,12 @@ svg.sm { width:14px; height:14px; }
 /* rest timer bar */
 .restbar { position:fixed; z-index:45; left:0; right:0; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 10px); max-width:480px; margin:0 auto; padding:0 14px; animation:viewIn .25s; }
 .restbar-in { display:flex; align-items:center; gap:12px; background:rgba(16,20,30,.95); border:1px solid rgba(255,161,23,.45); border-radius:18px; padding:12px 14px; backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); box-shadow:0 14px 40px rgba(0,0,0,.5); }
-.rb-clock { font-size:28px; font-weight:800; color:var(--amber); font-variant-numeric:tabular-nums; min-width:74px; }
+.rb-clock { font-size:24px; font-weight:800; color:var(--amber); font-variant-numeric:tabular-nums; min-width:64px; }
 .rb-mid { flex:1; min-width:0; }
 .rb-label { font-size:13.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .rb-sub { font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .rb-btns { display:flex; gap:6px; }
-.rb-btns button { background:rgba(255,255,255,.08); border:1px solid var(--line); color:var(--text,#fff); border-radius:10px; font-size:12px; font-weight:600; padding:8px 10px; }
+.rb-btns button { background:rgba(255,255,255,.08); border:1px solid var(--line); color:var(--text,#fff); border-radius:10px; font-size:11.5px; font-weight:600; padding:7px 9px; }
 .restbar.go .restbar-in { border-color:rgba(56,209,124,.6); }
 .restbar.go .rb-btns { display:none; }
 .restbar.go .rb-clock { color:#7ff0b0; animation:pulseGo 1s infinite; }
@@ -303,6 +303,9 @@ svg.sm { width:14px; height:14px; }
 
 #train-toast { position:fixed; left:50%; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 90px); transform:translate(-50%,16px); background:rgba(20,24,34,.97); border:1px solid rgba(255,161,23,.5); color:var(--text,#fff); font-size:13.5px; font-weight:600; padding:11px 16px; border-radius:14px; opacity:0; pointer-events:none; transition:all .25s; z-index:60; max-width:84vw; text-align:center; }
 #train-toast.show { opacity:1; transform:translate(-50%,0); }
+
+/* the hidden attribute must always win over author display styles (e.g. #toast display:flex) */
+[hidden] { display:none !important; }
 
 /* ── panels / forms ──────────────────────────────────────── */
 .panel {

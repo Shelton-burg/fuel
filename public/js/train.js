@@ -402,7 +402,7 @@ function seedDemoTrain() {
     s.ex[0].sets[2] = { w: 75, r: 8, done: true, ts: Date.now() - 13 * 60000 };
     s.ex[0].sets[3] = { w: 77.5, r: 8, done: true, ts: Date.now() - 9 * 60000 };
     s.ex[1].sets[0] = { w: 55, r: 10, done: true, ts: Date.now() - 6 * 60000 };
-    s.timer = { endAt: Date.now() + 71 * 1000, total: 90, kind: 'set', fired: false, label: 'Set 2 of 4 · Lat Pulldown', sub: 'Rest 1:30 — next set when it hits zero', goLabel: 'GO — Set 2 of 4 · Lat Pulldown', goSub: 'Tap to dismiss' };
+    s.timer = { endAt: Date.now() + 71 * 1000, total: 90, kind: 'set', fired: false, label: 'Set 2/4 · Lat Pulldown', sub: 'Rest 1:30 — next set when it hits zero', goLabel: 'GO — Set 2/4 · Lat Pulldown', goSub: 'Tap to dismiss' };
     S.putSession(K(), s);
   }
 }
