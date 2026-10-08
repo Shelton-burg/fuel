@@ -106,7 +106,7 @@ const WEEKLY_SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          kind: { type: 'string', enum: ['kcal', 'protein', 'rate', 'program', 'none'] },
+          kind: { type: 'string', enum: ['kcal', 'protein', 'rate', 'program', 'deload', 'none'] },
           suggest: { type: 'string' },
           why: { type: 'string' },
         },
@@ -124,7 +124,8 @@ Rules:
 - summary: 2-4 sentences reviewing the week honestly, grounded in the numbers given.
 - wins: 1-3 short wins from the data (days logged, sessions done, protein, weight moving the right way).
 - watch: 1-3 short things to keep an eye on.
-- tweaks: 0-4 small adjustments. kind must be one of: kcal (suggest MUST be one of tweakOptions.kcal), protein (one of tweakOptions.protein), rate (one of tweakOptions.rate), program ("strength"|"muscle"|"lean"), or none.
+- tweaks: 0-4 small adjustments. kind must be one of: kcal (suggest MUST be one of tweakOptions.kcal), protein (one of tweakOptions.protein), rate (one of tweakOptions.rate), program ("strength"|"muscle"|"lean"), deload, or none.
+- deload: ONLY include it when payload.training.weeksActive >= 8 AND payload.training.deloadRecent is false — then suggest backing off for a week (lighter weights, same schedule). No suggest value needed.
   Each tweak needs a short "why". Only include a tweak when the data justifies it — an empty tweaks list is fine and better than noise.
 - suggest is a string, e.g. "2700" for kcal, "180" for protein, "0.5" for rate, "lean" for program.
 - Australian English, "you" voice, warm but efficient. No medical claims.`;
@@ -136,9 +137,10 @@ function sanitizeWeekly(p, payload) {
   const allowedRate = (opt.rate || []).map(Number);
   const tweaks = (Array.isArray(p.tweaks) ? p.tweaks : [])
     .map((t) => {
-      const kind = ['kcal', 'protein', 'rate', 'program'].includes(t.kind) ? t.kind : null;
+      const kind = ['kcal', 'protein', 'rate', 'program', 'deload'].includes(t.kind) ? t.kind : null;
       if (!kind) return null;
       const why = clamp(t.why, 220);
+      if (kind === 'deload') return { kind, suggest: '', why };
       if (kind === 'kcal') { const v = Math.round(Number(t.suggest)); return allowedKcal.includes(v) ? { kind, suggest: v, why } : null; }
       if (kind === 'protein') { const v = Math.round(Number(t.suggest)); return allowedProtein.includes(v) ? { kind, suggest: v, why } : null; }
       if (kind === 'rate') { const v = Number(t.suggest); return allowedRate.includes(v) ? { kind, suggest: v, why } : null; }
@@ -157,7 +159,7 @@ function sanitizeWeekly(p, payload) {
   };
 }
 
-async function callModel(schema, promptText, apiKey) {
+export async function callModel(schema, promptText, apiKey) {
   const body = {
     contents: [{ parts: [{ text: promptText }] }],
     generationConfig: { temperature: 0.4, responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 2600 },

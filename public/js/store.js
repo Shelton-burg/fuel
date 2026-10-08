@@ -24,7 +24,10 @@ function load() {
   }
 }
 
-export function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
+export function save() {
+  localStorage.setItem(KEY, JSON.stringify(state));
+  try { globalThis.dispatchEvent(new Event('fuel:state-saved')); } catch {}
+}
 export function getState() { return state; }
 
 /* ── dates ── */

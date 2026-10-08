@@ -5,6 +5,7 @@
 import * as S from './store.js';
 import { PROGRAMS, PROGRAM_LIST, dayIdFor, nextDayIdFor } from './programs.js';
 import * as CH from './charts.js';
+import { photoPanelHTML, renderPhotoStrip } from './photos.js';
 
 const K = () => S.dayKey();
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -247,6 +248,12 @@ export function renderTrain() {
   else if (s && !s.finishedAt) { html = sessionHTML(p, s); keepAwake(true); }
   else { html = homeHTML(p, s); ui.justFinished = false; }
   root.innerHTML = html;
+  if (ui.mode === 'auto') {
+    const deloadAt = S.getSetting('deloadAt');
+    if (deloadAt && Date.now() - deloadAt < 7 * 864e5) {
+      root.insertAdjacentHTML('afterbegin', '<div class="panel deload-note">🧘 Deload week — keep it light (60–70% of your usual), same schedule. Your body will thank you.</div>');
+    }
+  }
   if (ui.mode === 'progress' && p) drawProgress();
   onTick();
 }
@@ -406,8 +413,10 @@ function progressHTML(p) {
       ? `<div class="prog-hero"><div class="prog-big"><span id="prog-latest-v">${fmtN(latest.kg, 1)}</span><span class="unit">kg</span></div>
         <div class="prog-delta ${d === null || d <= 0 ? 'down' : 'up'}" id="prog-wt-delta">${d === null ? `logged ${S.fmtDate(latest.key)}` : `${d >= 0 ? '+' : ''}${d} kg in 30 days`}</div></div>
         <div class="panel chart-panel"><canvas id="prog-weight" class="prog-canvas" height="150"></canvas>
-        <div class="chart-legend"><span class="muted">Your weigh-ins</span><span class="muted">tap the weight chip on Today to log</span></div></div>`
-      : `<div class="panel"><div class="empty-state">No weigh-ins yet.<br>Tap the weight chip on the Today screen to log one.</div></div>`;
+        <div class="chart-legend"><span class="muted">Your weigh-ins</span><span class="muted">tap the weight chip on Today to log</span></div></div>
+        ${photoPanelHTML()}`
+      : `<div class="panel"><div class="empty-state">No weigh-ins yet.<br>Tap the weight chip on the Today screen to log one.</div></div>
+        ${photoPanelHTML()}`;
   }
   return `<div class="page-head"><h1>Progress</h1><p class="muted">${esc(p.name)}</p></div>
     <button class="link-btn" data-act="back" type="button">← Back</button>
@@ -455,6 +464,7 @@ function drawProgress() {
     const sel = ui.progEx || names[0] || null;
     CH.line(c, { data: sel ? exSeries(sel, asc) : [], cssH: 150, unit: 'kg', minPad: 5 });
   } else if (ui.progTab === 'weight') {
+    renderPhotoStrip();
     const c = document.getElementById('prog-weight');
     if (!c) return;
     CH.line(c, { data: S.weightSeries().slice(-60).map((w) => ({ label: shortDate(w.key), value: w.kg })), cssH: 150, unit: 'kg', minPad: 0.5 });
@@ -491,6 +501,17 @@ function sessionHTML(p, s) {
       </div>
       <div class="setrow head"><span class="sr-n">Set</span><span class="sr-target">Reps</span><span class="sr-in-head">kg</span><span class="sr-in-head">reps</span><span></span></div>
       ${rows}
+      ${(() => {
+        if (ex.sets.some((st) => st.done)) return '';
+        const w0 = ex.sets[0]?.w ?? lbl?.lastW ?? null;
+        if (!w0 || w0 < 30) return '';
+        const r2 = (x) => Math.max(2.5, Math.round(x / 2.5) * 2.5);
+        const ramp = [['40% × 8', r2(w0 * 0.4)], ['60% × 5', r2(w0 * 0.6)], ['80% × 3', r2(w0 * 0.8)]];
+        const wu = ex.wu || [];
+        const doneCt = ramp.filter((x, wi) => wu[wi]).length;
+        return `<div class="wu"><button class="wu-toggle" data-act="wu" data-ex="${ei}" type="button">Warm-up ${ex.wuOpen ? '▾' : '▸'}${doneCt === ramp.length ? ' ✓' : doneCt ? ` (${doneCt}/${ramp.length})` : ''}</button>
+          ${ex.wuOpen ? `<div class="wu-rows">${ramp.map(([lab, wgt], wi) => `<div class="wu-row${wu[wi] ? ' done' : ''}" data-act="wutick" data-ex="${ei}" data-wi="${wi}" role="button"><span>${wgt} kg</span><span class="muted sm">${lab}</span><span class="wu-tick">${wu[wi] ? '✓' : ''}</span></div>`).join('')}</div>` : ''}</div>`;
+      })()}
       ${!exDone ? `<div class="ex-hint muted sm">Log a set and the rest timer starts automatically</div>` : ''}
     </div>`;
   }).join('');
@@ -535,6 +556,8 @@ document.addEventListener('click', (e) => {
     if (a === 'chgprog') { ui.mode = 'picker'; renderTrain(); return; }
     if (a === 'back') { ui.mode = 'auto'; renderTrain(); return; }
     if (a === 'progress') { ui.mode = 'progress'; renderTrain(); return; }
+    if (a === 'wu') { const s2 = todaySession(); if (s2) { const ex2 = s2.ex[+act.dataset.ex]; ex2.wuOpen = !ex2.wuOpen; S.putSession(K(), s2); renderTrain(); } return; }
+    if (a === 'wutick') { const s3 = todaySession(); if (s3) { const ex3 = s3.ex[+act.dataset.ex]; ex3.wu = ex3.wu || []; const wi = +act.dataset.wi; ex3.wu[wi] = !ex3.wu[wi]; S.putSession(K(), s3); renderTrain(); } return; }
     if (a === 'log') { const row = act.closest('.setrow'); logSet(+row.dataset.ex, +row.dataset.set); return; }
     if (a === 'unlog') { const row = act.closest('.setrow'); unlogSet(+row.dataset.ex, +row.dataset.set); return; }
   }

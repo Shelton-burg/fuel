@@ -59,6 +59,7 @@
     <!-- ══ TODAY ══ -->
     <section id="view-today" class="view active">
       <button class="daynav-pill" id="daynav-pill" type="button" hidden><svg><use href="#i-back"/></svg><span>Viewing <b id="dayview-date">—</b> · back to today</span></button>
+      <button class="nudge" id="nudge" type="button" hidden><span class="nudge-ico" id="nudge-ico">💡</span><span id="nudge-txt"></span><svg class="nudge-chev"><use href="#i-chev"/></svg></button>
       <div class="ring-wrap">
         <svg class="ring" viewBox="0 0 240 240" aria-hidden="true">
           <defs>
@@ -199,6 +200,16 @@
           <label class="field"><span>Fat</span><input id="set-fat" type="number" inputmode="numeric" value="71"></label>
         </div>
         <button class="btn ghost" id="btn-save-macros" type="button">Save macros</button>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">Cloud backup</h2>
+        <div id="sync-body"></div>
+      </div>
+
+      <div class="panel" id="tg-panel" hidden>
+        <h2 class="panel-title">Weekly digest → Telegram</h2>
+        <div id="tg-body"></div>
       </div>
 
       <div class="panel">

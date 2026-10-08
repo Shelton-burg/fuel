@@ -2,6 +2,8 @@
 import * as S from './store.js';
 import * as OFF from './off.js';
 import * as CH from './charts.js';
+import * as SY from './sync.js';
+import { dayIdFor, PROGRAMS } from './programs.js';
 
 const $ = (q, r = document) => r.querySelector(q);
 const $$ = (q, r = document) => [...r.querySelectorAll(q)];
@@ -20,6 +22,7 @@ const MEAL_META = {
 let selDate = S.dayKey(); // the day being viewed/edited (day navigation)
 let histMetric = 'kcal'; // history chart metric: kcal | protein
 let quickCache = []; // quick-add chips resolve their food via this (frequent + fits)
+let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
@@ -33,6 +36,12 @@ $('#btn-date').addEventListener('click', openDaySheet);
 $('#daynav-pill').addEventListener('click', () => setDay(S.dayKey()));
 $('#chip-weight').addEventListener('click', weightModal);
 $('#week-panel').addEventListener('click', () => switchView('history'));
+$('#nudge').addEventListener('click', () => {
+  const a = $('#nudge').dataset.nact;
+  if (a === 'train') switchView('train');
+  else if (a === 'add') openAddSheet();
+  else if (a === 'quick') { switchView('today'); $('#quick-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+});
 $('#hist-metrics').addEventListener('click', (e) => {
   const b = e.target.closest('[data-metric]');
   if (!b) return;
@@ -49,6 +58,7 @@ $$('.tab').forEach((t) => t.addEventListener('click', () => switchView(t.dataset
 /* ── goals & AI coach ── */
 let coachBusy = false;
 let weeklyBusy = false;
+let mpBusy = false;
 let goalsFrom = 'settings';
 
 $('#btn-open-goals').addEventListener('click', () => { goalsFrom = 'settings'; switchView('goals'); });
@@ -66,6 +76,11 @@ $('#goals-body').addEventListener('click', (e) => {
   if (t.closest('#btn-apply-targets')) { applyCoachPlan(); return; }
   if (t.closest('#btn-apply-program')) { applyCoachProgram(); return; }
   if (t.closest('#btn-run-weekly') || t.closest('#btn-ask-weekly')) { if (!weeklyBusy) runWeekly(false); return; }
+  if (t.closest('#btn-build-full')) { if (!mpBusy) runMealPlan(S.getSetting('mealPlan')?.mode && t.closest('.plan-foot') ? S.getSetting('mealPlan').mode : 'full'); return; }
+  if (t.closest('#btn-build-left')) { if (!mpBusy) runMealPlan('left'); return; }
+  const mpAdd = t.closest('[data-mp-add]');
+  if (mpAdd) { addMealPlan(mpAdd.dataset.mpAdd); return; }
+  if (t.closest('#btn-mp-add-all')) { addMealPlan('all'); return; }
   const wt = t.closest('[data-wtweak]');
   if (wt) { applyWeeklyTweak(+wt.dataset.wtweak); return; }
 });
@@ -195,6 +210,11 @@ function renderToday() {
   $('#btn-date').classList.toggle('past', !isToday());
   $('#daynav-pill').hidden = isToday();
   $('#dayview-date').textContent = S.fmtDate(selDate);
+
+  const n = isToday() ? buildNudge() : null;
+  const nb = $('#nudge');
+  nb.hidden = !n;
+  if (n) { $('#nudge-ico').textContent = n.ico; $('#nudge-txt').textContent = n.txt; nb.dataset.nact = n.act; }
 
   countUp($('#kcal-left'), left);
   $('#kcal-eaten').textContent = fmt(t.kcal);
@@ -1079,6 +1099,7 @@ function renderGoals() {
     </div>
 
     ${planHTML}
+    ${mealHTML()}
     ${weeklyHTML()}
   `;
 }
@@ -1167,7 +1188,7 @@ function applyCoachProgram() {
 }
 
 /* ══════════ weekly check-in ══════════ */
-const TW_LABEL = { kcal: 'Calories', protein: 'Protein', rate: 'Pace', program: 'Program' };
+const TW_LABEL = { kcal: 'Calories', protein: 'Protein', rate: 'Pace', program: 'Program', deload: 'Deload week' };
 
 function weeklyHTML() {
   const w = S.getSetting('weeklyReview');
@@ -1208,8 +1229,19 @@ function weeklyPayload() {
     if (logv && S.MEALS.some((m) => (logv.meals?.[m] || []).length)) prev7.push(S.dayTotals(k));
   }
   const avgOf = (arr, f) => (arr.length ? Math.round(arr.reduce((a, t) => a + f(t), 0) / arr.length) : 0);
+  const wk = {};
+  for (const h of S.sessionHistory(98).filter((x) => x.finishedAt)) {
+    const wcut = S.dayKey(new Date(Date.now() - 12 * 7 * 864e5));
+    if (h.key < wcut) continue;
+    const d = new Date(h.key);
+    const mon = S.dayKey(new Date(d.getTime() - ((d.getDay() + 6) % 7) * 864e5));
+    wk[mon] = (wk[mon] || 0) + 1;
+  }
+  const weeksActive = Object.values(wk).filter((n2) => n2 >= 2).length;
+  const deloadAt = S.getSetting('deloadAt');
   return {
     ...base,
+    training: { ...base.training, weeksActive, deloadRecent: !!(deloadAt && Date.now() - deloadAt < 8 * 7 * 864e5) },
     week: {
       logged: d7.length, avgKcal: avgOf(d7, (t) => t.kcal), avgProtein: avgOf(d7, (t) => t.p),
       prevLogged: prev7.length, prevAvgKcal: avgOf(prev7, (t) => t.kcal), prevAvgProtein: avgOf(prev7, (t) => t.p),
@@ -1227,6 +1259,7 @@ async function runWeekly(silent) {
     if (!r.ok || !j.ok) throw new Error(j.message || 'The check-in is unavailable right now — try again in a minute.');
     S.setSetting('weeklyError', null);
     S.setSetting('weeklyReview', { ts: Date.now(), result: j.result });
+    maybeSendDigest(j.result);
     if (!silent) toast('Weekly check-in ready');
   } catch (e) {
     S.setSetting('weeklyError', String(e.message || e).slice(0, 200));
@@ -1259,6 +1292,9 @@ function applyWeeklyTweak(i) {
     S.setSetting('programId', tw.suggest);
     window.dispatchEvent(new Event('fuel:refresh-train'));
     toast(`Program → ${PROGRAM_NAMES[tw.suggest] || tw.suggest}`);
+  } else if (tw.kind === 'deload') {
+    S.setSetting('deloadAt', Date.now());
+    toast('Deload marked — go lighter for a week 🧘');
   }
   w.result.tweaks.splice(i, 1); // consume it — no double-applying
   S.setSetting('weeklyReview', w);
@@ -1275,6 +1311,312 @@ async function maybeWeeklyCheckin() {
     if (S.recentDays(7).filter((d) => d.any).length < 3) return;
     await runWeekly(true);
   } catch {}
+}
+
+/* ══════════ meal planner ══════════ */
+function mealHTML() {
+  const mp = S.getSetting('mealPlan');
+  const g = S.getState().goals;
+  const t = S.dayTotals();
+  const left = g.kcal - t.kcal;
+  if (mpBusy) return `<div class="panel"><div class="loading-row">Building your day…</div></div>`;
+  if (!mp) {
+    return `<div class="panel coach-cta">
+      <h2 class="ph2">Build my day</h2>
+      <p class="hint muted">The coach drafts breakfast, lunch, dinner and snacks hitting your targets — from foods you actually eat. Add any meal to today with one tap.</p>
+      <button class="btn primary" id="btn-build-full" type="button">Build a full day (${fmt(g.kcal)} kcal)</button>
+      ${left > 300 ? `<button class="btn ghost" id="btn-build-left" type="button">Just what's left today (${fmt(left)} kcal)</button>` : ''}
+    </div>`;
+  }
+  const r = mp.result || {};
+  const added = mp.added || [];
+  const meals = (r.meals || []).map((m) => {
+    const isAdded = added.includes(m.slot);
+    return `<div class="mp-meal"><div class="mp-head"><b>${esc(m.label || m.slot)}</b><span class="muted sm">${fmt(m.totals?.kcal || 0)} kcal · ${Math.round(m.totals?.p || 0)}g P</span>
+      <button class="btn ghost sm-btn" data-mp-add="${m.slot}" type="button" ${isAdded ? 'disabled' : ''}>${isAdded ? 'Added ✓' : 'Add'}</button></div>
+      ${m.why ? `<div class="muted sm" style="margin:2px 0 6px">${esc(m.why)}</div>` : ''}
+      <div class="mp-items">${(m.items || []).map((it) => `<div class="mp-item${isAdded ? ' done' : ''}"><span>${esc(it.name)}</span><i>${it.qty && it.qty !== 1 ? it.qty + '× ' : ''}${esc(it.serve || '')}</i><b>${fmt(it.kcal)}</b></div>`).join('')}</div></div>`;
+  }).join('');
+  const pending = (r.meals || []).some((m) => !added.includes(m.slot));
+  return `<div class="panel plan-panel">
+    <div class="plan-head"><svg class="plan-spark"><use href="#i-spark"/></svg><h2 class="ph2">${esc(r.title || 'Your day')}</h2></div>
+    ${r.summary ? `<p class="plan-why muted">${esc(r.summary)}</p>` : ''}
+    <div class="mp-totals muted sm">Plan total: ${fmt(r.totals?.kcal || 0)} kcal · ${Math.round(r.totals?.p || 0)}g P · ${Math.round(r.totals?.c || 0)}g C · ${Math.round(r.totals?.f || 0)}g F</div>
+    ${meals}
+    ${(r.tips || []).length ? `<ul class="plan-tips">${r.tips.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+    ${pending ? `<button class="btn primary" id="btn-mp-add-all" type="button">Add the whole day to today</button>` : ''}
+    <div class="plan-foot"><span class="muted sm">Built ${new Date(mp.ts).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+      <span><button class="link-btn" id="btn-build-full" type="button">Rebuild (${mp.mode === 'left' ? 'what\u2019s left' : 'full day'})</button></span></div>
+  </div>`;
+}
+
+async function runMealPlan(mode) {
+  mpBusy = true;
+  renderGoals();
+  const st = S.getState();
+  const g = st.goals, p = st.profile;
+  const t = S.dayTotals();
+  const payload = {
+    mode,
+    targets: { kcal: g.kcal, protein: g.protein, carbs: g.carbs, fat: g.fat },
+    remain: { kcal: Math.max(0, g.kcal - t.kcal), p: Math.max(0, g.protein - t.p) },
+    aspiration: aspirOf(p),
+    notes: (p.notes || '').slice(0, 400),
+    frequent: S.frequentFoods(12).map((f, i) => ({ id: 'my' + i, name: f.name, serve: f.qtyLabel || 'serve', kcal: Math.round(f.kcal), p: Math.round(f.p), c: Math.round(f.c), f: Math.round(f.f) })),
+  };
+  try {
+    const r = await fetch('/api/mealplan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.message || 'The meal planner is unavailable right now — try again in a minute.');
+    S.setSetting('mealPlan', { ts: Date.now(), mode, result: j.result, added: [] });
+    toast('Meal plan ready');
+  } catch (e) {
+    toast(String(e.message || e).slice(0, 80), 'i-x');
+  }
+  mpBusy = false;
+  renderGoals();
+}
+
+function addMealPlan(which) {
+  const mp = S.getSetting('mealPlan');
+  if (!mp?.result?.meals) return;
+  const added = mp.added || [];
+  let n = 0;
+  let kcal = 0;
+  for (const m of mp.result.meals) {
+    if (which !== 'all' && m.slot !== which) continue;
+    if (added.includes(m.slot)) continue;
+    for (const it of m.items || []) {
+      S.addEntry(m.slot, { name: `${it.name}${it.qty && it.qty !== 1 ? ` ×${it.qty}` : ''}`, kcal: it.kcal, p: it.p, c: it.c, f: it.f, qtyLabel: it.serve || '' }, S.dayKey());
+      n++;
+      kcal += it.kcal || 0;
+    }
+    if (!added.includes(m.slot)) added.push(m.slot);
+  }
+  mp.added = added;
+  S.setSetting('mealPlan', mp);
+  renderToday();
+  renderGoals();
+  vib(12);
+  if (n) toast(`${which === 'all' ? 'Whole day' : (mp.result.meals.find((x) => x.slot === which)?.label || 'Meal')} added to today — ${fmt(kcal)} kcal`);
+}
+
+/* ══════════ gentle nudges ══════════ */
+function buildNudge(now = new Date()) {
+  const h = now.getHours();
+  const key = S.dayKey(now);
+  const st = S.getState();
+  const t = S.dayTotals(key);
+  const g = st.goals;
+  const sess = st.workouts[key];
+  const dayId = dayIdFor(now);
+  if (dayId && h >= 16 && (!sess || sess.finishedAt)) {
+    const pid = S.getSetting('programId') || 'muscle';
+    const day = (PROGRAMS[pid] || PROGRAMS.muscle)?.days?.[dayId];
+    return { ico: '💪', txt: `${day ? day.label : 'Training'} day — your session is waiting`, act: 'train' };
+  }
+  if (h >= 14 && t.kcal < 400) return { ico: '🍽️', txt: t.kcal > 0 ? `Only ${fmt(t.kcal)} kcal logged today — keep it rolling` : 'Nothing logged yet today — quick add a meal', act: 'add' };
+  if (h >= 19 && t.kcal > 0 && t.p < g.protein * 0.6) return { ico: '🥛', txt: `Protein at ${Math.round(t.p)}g of ${g.protein}g — a shake or yoghurt closes the gap`, act: 'quick' };
+  return null;
+}
+window.__fuelNudge = (iso) => { try { const n = buildNudge(new Date(iso)); return n ? n.txt : null; } catch { return null; } };
+
+/* ══════════ cloud backup (Settings) ══════════ */
+fetch('/api/health').then((r) => r.json()).then((h) => { health = h || health; }).catch(() => {});
+
+function renderSyncPanel() {
+  const el = $('#sync-body');
+  if (!el) return;
+  const key = S.getSetting('syncKey');
+  const meta = SY.syncMeta();
+  if (!key) {
+    el.innerHTML = `<p class="hint muted" style="margin-top:0">Your logs live only on this phone. Turn on backup and an encrypted copy is kept in your private cloud slot — a new phone can restore everything in seconds. Only a phone holding your key can read it.</p>
+      <button class="btn primary" id="btn-sync-on" type="button">Turn on cloud backup</button>
+      <button class="btn ghost" id="btn-sync-restore" type="button">Restore from a backup instead…</button>`;
+    return;
+  }
+  const last = meta.last
+    ? `Last backup: ${new Date(meta.last).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}${meta.err ? ` · last error: ${esc(meta.err)}` : ''}`
+    : 'Not backed up yet — tap “Back up now”.';
+  el.innerHTML = `<p class="hint muted" style="margin-top:0">${last}</p>
+    <button class="btn primary" id="btn-sync-now" type="button">Back up now</button>
+    <button class="btn ghost" id="btn-sync-key" type="button">Show my sync key</button>
+    <button class="btn ghost" id="btn-sync-restore" type="button">Restore from backup…</button>
+    <button class="btn ghost" id="btn-sync-off" type="button">Turn off backup</button>`;
+}
+
+function renderTgPanel() {
+  const panel = $('#tg-panel');
+  if (!panel) return;
+  panel.hidden = !health.tg;
+  if (panel.hidden) return;
+  $('#tg-body').innerHTML = `<label class="switch-row"><span>Send each weekly check-in to my Telegram</span>
+      <input type="checkbox" id="tg-toggle" ${S.getSetting('telegramDigest') !== false ? 'checked' : ''}></label>
+    <button class="btn ghost" id="btn-tg-test" type="button">Send a test message</button>`;
+}
+
+async function syncNow(manual) {
+  const key = S.getSetting('syncKey');
+  if (!key) return false;
+  try {
+    await SY.pushBackup(S.getState(), key);
+    if (manual) { toast('Backed up ✓'); renderSettings(); }
+    return true;
+  } catch (err) {
+    SY.setMeta({ err: String(err.message || err).slice(0, 120) });
+    if (manual) { toast(String(err.message || err).slice(0, 80), 'i-x'); renderSettings(); }
+    return false;
+  }
+}
+
+function syncEnable() {
+  const parked = SY.syncMeta().parkedKey;
+  if (parked) {
+    S.setSetting('syncKey', parked);
+    SY.setMeta({ parkedKey: null });
+    toast('Backup resumed with your existing key');
+    syncNow(true);
+    renderSettings();
+    return;
+  }
+  const key = SY.genSyncKey();
+  const { wrap, close } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">Your sync key</div>
+    </div>
+    <p class="nutri-note">This key unlocks your backup. Keep it somewhere safe — a password manager, or a note you'd still have if this phone died. Anyone with the key can read the backup, so don't post it.</p>
+    <div class="sync-key-box" id="sync-key-show">${key}</div>
+    <button class="btn ghost" data-copy type="button">Copy key</button>
+    <button class="btn primary" data-arm type="button">I've saved it — turn on backup</button>
+  `);
+  wrap.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-close]')) { close(); return; }
+    if (e.target.closest('[data-copy]')) {
+      try { await navigator.clipboard.writeText(key); toast('Key copied'); } catch { toast('Copy failed — screenshot it instead', 'i-x'); }
+      return;
+    }
+    if (e.target.closest('[data-arm]')) {
+      S.setSetting('syncKey', key);
+      close();
+      renderSettings();
+      const okp = await syncNow(false);
+      toast(okp ? 'Cloud backup on — first backup saved' : 'Cloud backup on — first backup failed, check Settings', okp ? 'i-check' : 'i-x');
+      renderSettings();
+    }
+  });
+}
+
+function syncShowKey() {
+  const key = S.getSetting('syncKey');
+  if (!key) return;
+  const { wrap, close } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">My sync key</div>
+    </div>
+    <p class="nutri-note">The key that unlocks your backup. Keep it somewhere safe.</p>
+    <div class="sync-key-box">${key}</div>
+    <button class="btn ghost" data-copy type="button">Copy key</button>
+  `);
+  wrap.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-close]')) { close(); return; }
+    if (e.target.closest('[data-copy]')) {
+      try { await navigator.clipboard.writeText(key); toast('Key copied'); } catch { toast('Copy failed — screenshot it instead', 'i-x'); }
+    }
+  });
+}
+
+function syncRestore() {
+  let pulled = null;
+  const { wrap, close } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">Restore from backup</div>
+    </div>
+    <label class="field"><span>Your sync key</span>
+      <input id="sync-key-in" type="text" placeholder="FUEL-XXXXXX-…" autocapitalize="characters" autocomplete="off"></label>
+    <button class="btn primary" data-sync-pull type="button">Find my backup</button>
+    <div id="sync-pull-msg" class="muted sm" style="margin-top:8px"></div>
+  `);
+  wrap.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-close]')) { close(); return; }
+    if (e.target.closest('[data-sync-pull]')) {
+      const key = ($('#sync-key-in', wrap).value || '').trim().toUpperCase();
+      const msg = $('#sync-pull-msg', wrap);
+      if (!key) { msg.textContent = 'Type your sync key first.'; return; }
+      msg.textContent = 'Looking for your backup…';
+      try {
+        const out = await SY.pullBackup(key);
+        pulled = out;
+        const st = out.state || {};
+        const days = Object.keys(st.logs || {}).length;
+        const wkt = Object.keys(st.workouts || {}).length;
+        msg.innerHTML = `Found a backup from ${new Date(out.updatedAt).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} — ${days} logged day${days === 1 ? '' : 's'}, ${wkt} workout${wkt === 1 ? '' : 's'}, goal ${fmt(st.goals?.kcal || 0)} kcal.<br>
+          <button class="btn danger sm-btn" data-sync-replace type="button" style="margin-top:8px">Replace everything on this phone with it</button>`;
+      } catch (err) {
+        msg.textContent = String(err.message || err);
+      }
+      return;
+    }
+    if (e.target.closest('[data-sync-replace]')) {
+      if (!pulled) return;
+      S.importJSON(JSON.stringify(pulled.state));
+      S.setSetting('syncKey', (($('#sync-key-in', wrap).value || '').trim().toUpperCase()));
+      selDate = S.dayKey();
+      renderAll();
+      renderToday();
+      close();
+      toast('Backup restored');
+    }
+  });
+}
+
+function syncOff() {
+  const key = S.getSetting('syncKey');
+  if (!key) return;
+  const { wrap, close } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">Turn off backup?</div>
+    </div>
+    <p class="nutri-note">Your cloud copy stays put — the sync key still restores it later. Keep the key safe before turning off.</p>
+    <button class="btn danger" data-sync-off-arm type="button">Turn off backup</button>
+  `);
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { close(); return; }
+    if (e.target.closest('[data-sync-off-arm]')) {
+      SY.setMeta({ parkedKey: key });
+      S.setSetting('syncKey', null);
+      close();
+      renderSettings();
+      toast('Backup off — your key was kept for easy re-enable');
+    }
+  });
+}
+
+async function tgTest() {
+  try {
+    const r = await fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: '🏋️ FUEL test — your weekly check-in will arrive here. ✅' }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.message || 'Could not send');
+    toast('Test message sent to your Telegram');
+  } catch (e) { toast(String(e.message || e).slice(0, 80), 'i-x'); }
+}
+
+async function maybeSendDigest(result) {
+  try {
+    if (new URLSearchParams(location.search).get('demo') === '1') return;
+    if (!health.tg) return;
+    if (S.getSetting('telegramDigest') === false) return;
+    const lines = ['🏋️ FUEL — weekly check-in', ''];
+    if (result.headline) lines.push(`*${result.headline}*`);
+    if (result.summary) lines.push(result.summary);
+    if ((result.wins || []).length) lines.push('', ...result.wins.map((w) => `✓ ${w}`));
+    if ((result.watch || []).length) lines.push('', ...result.watch.map((w) => `→ ${w}`));
+    if ((result.tweaks || []).length) lines.push('', `Suggested: ${result.tweaks.map((t) => `${TW_LABEL[t.kind] || t.kind}${t.suggest ? ' → ' + t.suggest : ''}`).join(' · ')} — open FUEL to apply.`);
+    await fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: lines.join('\n') }) });
+  } catch { /* digest is best-effort */ }
 }
 
 /* ══════════ settings ══════════ */
@@ -1294,6 +1636,8 @@ function renderSettings() {
   $('#set-fat').value = g.fat;
   const t = S.computeTargets(p);
   $('#tdee-hint').textContent = `Estimated burn (TDEE): ${fmt(t.bdee)} kcal/day — targets recalculated from this.`;
+  renderSyncPanel();
+  renderTgPanel();
 }
 
 $('#btn-save-profile').addEventListener('click', () => {
@@ -1360,6 +1704,38 @@ $('#btn-reset').addEventListener('click', () => {
     toast('Fresh start');
   }
 });
+
+/* ── cloud backup + telegram wiring ── */
+$('#view-settings').addEventListener('click', (e) => {
+  const t = e.target;
+  if (t.closest('#btn-sync-on')) { syncEnable(); return; }
+  if (t.closest('#btn-sync-now')) { syncNow(true); return; }
+  if (t.closest('#btn-sync-key')) { syncShowKey(); return; }
+  if (t.closest('#btn-sync-restore')) { syncRestore(); return; }
+  if (t.closest('#btn-sync-off')) { syncOff(); return; }
+  if (t.closest('#btn-tg-test')) { tgTest(); return; }
+});
+$('#view-settings').addEventListener('change', (e) => {
+  if (e.target.id === 'tg-toggle') {
+    S.setSetting('telegramDigest', e.target.checked);
+    toast(e.target.checked ? 'Weekly digest on' : 'Weekly digest off');
+  }
+});
+
+/* ── auto cloud backup (debounced) + toast bridge ── */
+let syncTimer = null, syncInFlight = false;
+window.addEventListener('fuel:state-saved', () => {
+  if (new URLSearchParams(location.search).get('demo') === '1' && !window.__syncAllowDemo) return;
+  if (!S.getSetting('syncKey')) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(async () => {
+    if (syncInFlight) return;
+    syncInFlight = true;
+    try { await SY.pushBackup(S.getState(), S.getSetting('syncKey')); } catch (e2) { SY.setMeta({ err: String(e2.message || e2).slice(0, 120) }); }
+    syncInFlight = false;
+  }, 12000);
+});
+window.addEventListener('fuel:toast', (e) => toast(e.detail));
 
 /* ══════════ demo seed (only with ?demo=1) ══════════ */
 function seedDemo() {

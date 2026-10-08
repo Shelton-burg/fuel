@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseLabel } from './label.mjs';
 import { coachAdvice, weeklyReview } from './coach.mjs';
+import { mealPlan } from './mealplan.mjs';
+import { readSync, writeSync, syncConfigured } from './sync.mjs';
+import { sendTelegram, telegramConfigured } from './notify.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 4170;
@@ -31,7 +34,7 @@ const app = express();
 app.use(express.json({ limit: '6mb' }));
 app.use(express.static(join(__dirname, '..', 'public'), { extensions: ['html'] }));
 
-app.get('/api/health', (req, res) => res.json({ ok: true, ai: !!GEMINI_KEY, coach: !!GEMINI_KEY }));
+app.get('/api/health', (req, res) => res.json({ ok: true, ai: !!GEMINI_KEY, coach: !!GEMINI_KEY, sync: syncConfigured(), tg: telegramConfigured() }));
 
 app.post('/api/parse-label', async (req, res) => {
   try {
@@ -77,6 +80,64 @@ app.post('/api/weekly', async (req, res) => {
     console.error('[weekly]', e.detail || e.message);
     res.status(502).json({ error: 'weekly_failed', message: 'The check-in is unavailable right now — try again in a minute.' });
   }
+});
+
+const slotOf = (req) => (typeof req.query.slot === 'string' && /^[a-z0-9-]{1,20}$/.test(req.query.slot) ? `prod-${req.query.slot}` : undefined);
+
+app.get('/api/sync/state', async (req, res) => {
+  try {
+    if (!syncConfigured()) return res.status(503).json({ error: 'sync_not_configured', message: 'Cloud backup is not configured on the server yet.' });
+    const s = await readSync(slotOf(req));
+    res.json({ ok: true, hasBlob: !!s.blob, updatedAt: s.updatedAt });
+  } catch (e) { console.error('[sync-state]', e.detail || e.message); res.status(502).json({ error: 'sync_failed', message: 'Backup storage is unavailable right now.' }); }
+});
+
+app.get('/api/sync/blob', async (req, res) => {
+  try {
+    if (!syncConfigured()) return res.status(503).json({ error: 'sync_not_configured', message: 'Cloud backup is not configured on the server yet.' });
+    const s = await readSync(slotOf(req));
+    res.json({ ok: true, blob: s.blob, keyHash: s.keyHash, updatedAt: s.updatedAt });
+  } catch (e) { console.error('[sync-blob]', e.detail || e.message); res.status(502).json({ error: 'sync_failed', message: 'Backup storage is unavailable right now.' }); }
+});
+
+app.post('/api/sync/blob', async (req, res) => {
+  try {
+    if (!syncConfigured()) return res.status(503).json({ error: 'sync_not_configured', message: 'Cloud backup is not configured on the server yet.' });
+    const { blob, keyHash } = req.body || {};
+    if (typeof blob !== 'string' || !blob) return res.status(400).json({ error: 'no_blob' });
+    if (blob.length > 2_500_000) return res.status(413).json({ error: 'too_large' });
+    if (typeof keyHash !== 'string' || !/^[0-9a-f]{64}$/.test(keyHash)) return res.status(400).json({ error: 'bad_keyhash' });
+    const out = await writeSync(blob, keyHash, slotOf(req));
+    res.json({ ok: true, updatedAt: out.updatedAt });
+  } catch (e) {
+    if (e.message === 'key_mismatch') return res.status(403).json({ error: 'key_mismatch', message: 'This backup slot already holds a backup made with a different sync key.' });
+    console.error('[sync-write]', e.detail || e.message);
+    res.status(502).json({ error: 'sync_failed', message: 'Backup failed — try again in a minute.' });
+  }
+});
+
+app.post('/api/mealplan', async (req, res) => {
+  try {
+    if (!GEMINI_KEY) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
+    const payload = req.body && req.body.payload;
+    if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'no_payload' });
+    if (JSON.stringify(payload).length > 30000) return res.status(413).json({ error: 'too_large' });
+    const result = await mealPlan(payload, GEMINI_KEY);
+    res.json({ ok: true, result });
+  } catch (e) {
+    console.error('[mealplan]', e.detail || e.message);
+    res.status(502).json({ error: 'mealplan_failed', message: 'The meal planner is unavailable right now — try again in a minute.' });
+  }
+});
+
+app.post('/api/notify', async (req, res) => {
+  try {
+    if (!telegramConfigured()) return res.status(503).json({ error: 'tg_not_configured', message: 'Telegram is not configured on the server.' });
+    const { text } = req.body || {};
+    if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'no_text' });
+    await sendTelegram(text.trim());
+    res.json({ ok: true });
+  } catch (e) { console.error('[notify]', e.detail || e.message); res.status(502).json({ error: 'notify_failed', message: 'Message could not be sent.' }); }
 });
 
 app.listen(PORT, () => {

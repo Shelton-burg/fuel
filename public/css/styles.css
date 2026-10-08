@@ -651,6 +651,53 @@ svg.sm { width:14px; height:14px; }
 .tw-row { display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--panel-2); border:1px solid var(--line); border-radius:14px; padding:10px 12px; margin-bottom:8px; font-size:13px; }
 .tw-val { color:var(--amber); font-weight:700; }
 .plan-tips.wins li { color:var(--good); }
+/* ── nudge banner ── */
+.nudge { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:linear-gradient(90deg, rgba(255,161,23,.14), rgba(255,161,23,.05)); border:1px solid rgba(255,161,23,.3); border-radius:16px; padding:12px 14px; margin:0 0 12px; color:var(--text); font-size:13.5px; }
+.nudge-ico { font-size:16px; }
+.nudge-chev { width:14px; height:14px; margin-left:auto; opacity:.6; flex:0 0 auto; }
+/* ── cloud backup + telegram ── */
+.switch-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 2px; font-size:14px; }
+.switch-row input { width:auto; }
+.sync-key-box { font-family:var(--font-num); font-size:15px; letter-spacing:.5px; background:var(--panel-2); border:1px dashed rgba(255,161,23,.5); border-radius:14px; padding:14px 12px; text-align:center; word-break:break-all; margin:10px 0; }
+/* ── warm-up ramp ── */
+.wu { margin:8px 0 2px; }
+.wu-toggle { background:none; border:0; color:var(--amber); font-size:12.5px; font-weight:600; padding:2px 0; }
+.wu-rows { margin-top:6px; display:flex; flex-direction:column; gap:4px; }
+.wu-row { display:flex; align-items:center; gap:10px; background:var(--panel-2); border:1px solid var(--line); border-radius:10px; padding:6px 10px; font-size:13px; }
+.wu-row.done { opacity:.55; }
+.wu-row.done .wu-tick { color:var(--good); }
+.wu-row .wu-tick { margin-left:auto; width:14px; text-align:center; flex:0 0 auto; }
+/* ── progress photos ── */
+.photo-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.photo-head .ph2 { margin:0; }
+.photo-head-r { display:flex; gap:6px; }
+.photo-strip { display:flex; gap:8px; overflow-x:auto; padding:2px 0; }
+.photo-thumb { background:none; border:0; padding:0; display:flex; flex-direction:column; gap:4px; flex:0 0 auto; }
+.photo-thumb img { width:74px; height:92px; object-fit:cover; border-radius:10px; border:1px solid var(--line-2); }
+.photo-thumb span { font-size:10.5px; color:var(--muted); }
+.photo-overlay { position:fixed; inset:0; background:rgba(8,10,16,.86); z-index:60; display:flex; align-items:center; justify-content:center; padding:18px; }
+.photo-box { background:var(--panel); border:1px solid var(--line-2); border-radius:18px; padding:14px; max-width:92vw; max-height:86vh; overflow:auto; display:flex; flex-direction:column; gap:10px; }
+.photo-box > img { max-width:100%; border-radius:12px; }
+.photo-cmp { display:flex; gap:10px; }
+.photo-cmp figure { margin:0; display:flex; flex-direction:column; gap:6px; }
+.photo-cmp img { width:42vw; max-width:180px; border-radius:10px; }
+.photo-cmp figcaption { font-size:11.5px; color:var(--muted); }
+.photo-meta { font-size:13px; }
+.photo-actions { display:flex; gap:8px; justify-content:flex-end; }
+/* ── meal plan ── */
+.mp-totals { margin:2px 0 10px; }
+.mp-meal { border-top:1px solid var(--line); padding:10px 0 4px; }
+.mp-head { display:flex; align-items:center; gap:8px; font-size:14px; }
+.mp-head > b { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mp-head .muted { margin-left:auto; white-space:nowrap; flex:0 0 auto; }
+.mp-head .sm-btn { flex:0 0 auto; width:auto; padding:6px 12px; }
+.photo-head-r .btn { width:auto; }
+.mp-item { display:flex; align-items:baseline; gap:8px; font-size:13px; padding:3px 0; }
+.mp-item i { font-style:normal; color:var(--muted); font-size:11.5px; }
+.mp-item b { margin-left:auto; font-family:var(--font-num); }
+.mp-item.done { opacity:.5; }
+/* ── deload note ── */
+.deload-note { border-color:rgba(120,180,255,.35); background:rgba(120,180,255,.08); font-size:13.5px; }
 .plan-tips.watch li { color:var(--amber); }
 
 /* ── progress charts ─────────────────────────────────────── */
