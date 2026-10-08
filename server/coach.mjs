@@ -64,7 +64,7 @@ export async function coachAdvice(payload, apiKey) {
       temperature: 0.4,
       responseMimeType: 'application/json',
       responseSchema: RESPONSE_SCHEMA,
-      maxOutputTokens: 2600,
+      maxOutputTokens: 8192,
     },
   };
   let lastErr = '';
@@ -162,7 +162,7 @@ function sanitizeWeekly(p, payload) {
 export async function callModel(schema, promptText, apiKey) {
   const body = {
     contents: [{ parts: [{ text: promptText }] }],
-    generationConfig: { temperature: 0.4, responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 2600 },
+    generationConfig: { temperature: 0.4, responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 8192 },
   };
   let lastErr = '';
   for (const model of MODEL_CANDIDATES) {
