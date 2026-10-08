@@ -579,33 +579,57 @@ function searchModal() {
   const input = $('#q', wrap);
   setTimeout(() => input.focus(), 120);
 
+  const cache = new Map();
+  let seq = 0;
+  let ctrl = null;
+  let idleTimer = null;
+
+  const showList = (list) => {
+    if (!list.length) { results.innerHTML = `<div class="empty-state">No matches.<br>Try a shorter or different word — or snap the label instead.</div>`; return; }
+    results.innerHTML = list
+      .map(
+        (f, i) => `<button class="food-row" data-i="${i}" type="button">
+        ${f.image ? `<img class="food-thumb" src="${esc(f.image)}" alt="" loading="lazy">` : `<span class="food-thumb ph"><svg><use href="#i-search"/></svg></span>`}
+        <div class="food-main"><div class="food-name">${esc(f.name)}</div><div class="food-brand">${esc(f.brand || '')}</div></div>
+        <div class="food-kcal">${f.basis === '100g' ? fmt(f.kcal) + ' kcal<small>per 100 g</small>' : fmt(f.kcal) + ' kcal<small>per serve</small>'}</div>
+      </button>`
+      )
+      .join('');
+    results._list = list;
+  };
+
   const run = async () => {
     const q = input.value.trim();
     if (q.length < 2) return;
+    const my = ++seq;
+    if (ctrl) ctrl.abort();
+    if (cache.has(q)) { showList(cache.get(q)); return; }
+    ctrl = new AbortController();
     results.innerHTML = `<div class="loading-row"><div class="spinner"></div>Searching 4M+ foods…</div>`;
     try {
-      const list = await OFF.searchFoods(q);
-      if (!list.length) { results.innerHTML = `<div class="empty-state">No matches.<br>Try a shorter or different word — or snap the label instead.</div>`; return; }
-      results.innerHTML = list
-        .map(
-          (f, i) => `<button class="food-row" data-i="${i}" type="button">
-          ${f.image ? `<img class="food-thumb" src="${esc(f.image)}" alt="" loading="lazy">` : `<span class="food-thumb ph"><svg><use href="#i-search"/></svg></span>`}
-          <div class="food-main"><div class="food-name">${esc(f.name)}</div><div class="food-brand">${esc(f.brand || '')}</div></div>
-          <div class="food-kcal">${f.basis === '100g' ? fmt(f.kcal) + ' kcal<small>per 100 g</small>' : fmt(f.kcal) + ' kcal<small>per serve</small>'}</div>
-        </button>`
-        )
-        .join('');
-      results._list = list;
+      const list = await OFF.searchFoods(q, 24, ctrl.signal);
+      if (my !== seq) return; // a newer search is in flight
+      cache.set(q, list);
+      if (cache.size > 20) cache.delete(cache.keys().next().value);
+      showList(list);
     } catch (err) {
+      if (my !== seq || (err && err.name === 'AbortError')) return;
       results.innerHTML = `<div class="empty-state">Search is having a moment (${esc(err.message)}).<br>Try again shortly.</div>`;
     }
   };
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
-  input.addEventListener('change', run);
+  // live search as you type: 2+ chars, one call per pause
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    clearTimeout(idleTimer);
+    if (!q) { results.innerHTML = ''; return; }
+    if (q.length < 2) return;
+    idleTimer = setTimeout(run, 350);
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(idleTimer); run(); } });
   const btn = document.createElement('button');
   btn.className = 'btn ghost';
   btn.textContent = 'Search';
-  btn.addEventListener('click', run);
+  btn.addEventListener('click', () => { clearTimeout(idleTimer); run(); });
   results.after(btn);
 
   wrap.addEventListener('click', (e) => {

@@ -34,6 +34,42 @@ const app = express();
 app.use(express.json({ limit: '6mb' }));
 app.use(express.static(join(__dirname, '..', 'public'), { extensions: ['html'] }));
 
+
+/* /api/search — OFF full-text search proxied server-side. The modern search backend
+   (search.openfoodfacts.org) sends no Access-Control-Allow-Origin, so browsers can't
+   call it directly; and the legacy /api/v2/search ranks by global popularity and answers
+   plain word searches with near-random products. Proxy + small cache + legacy fallback. */
+const searchCache = new Map();
+const SEARCH_TTL = 10 * 60 * 1000;
+const SEARCH_FIELDS = 'code,product_name,brands,nutriments,serving_size,serving_quantity,image_front_small_url,image_front_url';
+const OFF_UA = 'FuelTracker/0.1 (shelton@allplumbandgas.com.au)';
+
+app.get('/api/search', async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 60);
+  const limit = Math.min(40, Math.max(1, parseInt(req.query.limit, 10) || 24));
+  if (q.length < 2) return res.status(400).json({ error: 'bad_query', message: 'Give me at least two characters.' });
+  const key = q.toLowerCase() + '|' + limit;
+  const hit = searchCache.get(key);
+  if (hit && Date.now() - hit.t < SEARCH_TTL) return res.json({ ok: true, hits: hit.hits, cached: true });
+  try {
+    let hits = [];
+    try {
+      const r = await fetch(`https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&page_size=${limit}&fields=${SEARCH_FIELDS}`, { headers: { 'User-Agent': OFF_UA }, signal: AbortSignal.timeout(9000) });
+      if (r.ok) hits = ((await r.json()).hits || []);
+    } catch (e1) { console.error('[search] sal:', e1.message); }
+    if (!hits.length) {
+      const r2 = await fetch(`https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(q)}&fields=${SEARCH_FIELDS}&page_size=${limit}&sort_by=popularity_key`, { headers: { 'User-Agent': OFF_UA }, signal: AbortSignal.timeout(9000) });
+      if (r2.ok) hits = ((await r2.json()).products || []);
+    }
+    if (searchCache.size > 80) searchCache.delete(searchCache.keys().next().value);
+    searchCache.set(key, { t: Date.now(), hits });
+    res.json({ ok: true, hits });
+  } catch (e) {
+    console.error('[search]', e.message);
+    res.status(502).json({ error: 'search_failed', message: 'Search is unavailable right now.' });
+  }
+});
+
 app.get('/api/health', (req, res) => res.json({ ok: true, ai: !!GEMINI_KEY, coach: !!GEMINI_KEY, sync: syncConfigured(), tg: telegramConfigured() }));
 
 app.post('/api/parse-label', async (req, res) => {
