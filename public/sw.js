@@ -1,6 +1,6 @@
 // FUEL service worker — shell cache-first, API network-only.
-const CACHE = 'fuel-v4';
-const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/store.js', 'js/off.js', 'js/programs.js', 'js/train.js', 'manifest.webmanifest', 'icons/icon.svg'];
+const CACHE = 'fuel-v5';
+const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/store.js', 'js/off.js', 'js/charts.js', 'js/programs.js', 'js/train.js', 'manifest.webmanifest', 'icons/icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

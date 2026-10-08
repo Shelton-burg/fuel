@@ -4,6 +4,7 @@
 // next exercise. +30 s and Skip buttons on every rest. Screen stays awake during a session.
 import * as S from './store.js';
 import { PROGRAMS, PROGRAM_LIST, dayIdFor, nextDayIdFor } from './programs.js';
+import * as CH from './charts.js';
 
 const K = () => S.dayKey();
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -16,6 +17,7 @@ const fmtDur = (ms) => {
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`;
 };
 const fmtRest = (s) => (s < 60 ? `${s}s` : s % 60 === 0 ? `${s / 60}:00` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+const fmtN = (n, d = 0) => Number(n ?? 0).toLocaleString('en-AU', { maximumFractionDigits: d });
 
 /* ── audio + haptics ── */
 let ac = null;
@@ -224,7 +226,7 @@ function discardSession(btn) {
 }
 
 /* ── view state + render ── */
-let ui = { mode: 'auto', justFinished: false, pickerBounce: 0 };
+let ui = { mode: 'auto', justFinished: false, pickerBounce: 0, progTab: 'volume', progEx: null };
 
 function renderTrainSoft() {
   const root = document.getElementById('train-root');
@@ -238,10 +240,12 @@ export function renderTrain() {
   const s = todaySession();
   let html;
   if (ui.mode === 'picker') html = pickerHTML(p);
+  else if (ui.mode === 'progress' && p) html = progressHTML(p);
   else if (!p) html = pickerHTML(null);
   else if (s && !s.finishedAt) { html = sessionHTML(p, s); keepAwake(true); }
   else { html = homeHTML(p, s); ui.justFinished = false; }
   root.innerHTML = html;
+  if (ui.mode === 'progress' && p) drawProgress();
   onTick();
 }
 
@@ -298,9 +302,118 @@ function homeHTML(p, s) {
         return `<div class="hrow"><span class="hr-date">${esc(S.fmtDate(h.key))}</span><span class="hr-day">${esc(h.dayLabel.split('·')[0].trim())}</span><span class="hr-st">${st.sets} sets · ${st.vol.toLocaleString()} kg</span></div>`;
       }).join('')}</div>`
     : '';
-  return `<div class="page-head"><h1>Train</h1><p class="muted">${esc(p.name)} · <button class="link-btn inline" data-act="chgprog" type="button">Change program</button></p></div>
+  return `<div class="page-head"><h1>Train</h1><p class="muted">${esc(p.name)} · <button class="link-btn inline" data-act="chgprog" type="button">Change program</button> · <button class="link-btn inline" data-act="progress" type="button">Progress</button></p></div>
     ${ui.justFinished ? '<div class="finish-banner">Workout saved — 💪</div>' : ''}
     ${today}${histHTML}`;
+}
+
+/* ── progress (charts) ── */
+function shortDate(k) {
+  return `${Number(k.slice(8))}/${Number(k.slice(5, 7))}`;
+}
+function finishedSessions() {
+  return S.sessionHistory(90).filter((h) => h && h.finishedAt);
+}
+function exNamesNewestFirst(fin) {
+  const seen = [];
+  for (const h of fin) for (const ex of h.ex || []) {
+    if (!seen.includes(ex.name) && ex.sets?.some((st) => st.done)) seen.push(ex.name);
+  }
+  return seen;
+}
+function exSeries(name, finAsc) {
+  const pts = [];
+  for (const h of finAsc) {
+    const ex = (h.ex || []).find((e2) => e2.name === name);
+    if (!ex) continue;
+    const done = ex.sets.filter((st) => st.done);
+    if (!done.length) continue;
+    const top = done.reduce((a, b) => ((b.w || 0) > (a.w || 0) ? b : a), done[0]);
+    pts.push({ key: h.key, label: shortDate(h.key), value: top.w });
+  }
+  return pts;
+}
+
+function progressHTML(p) {
+  const fin = finishedSessions();
+  const asc = fin.slice().reverse();
+  const TAB_META = { volume: 'Volume', strength: 'Strength', weight: 'Weight' };
+  const tabs = ['volume', 'strength', 'weight']
+    .map((id) => `<button class="chip${ui.progTab === id ? ' sel' : ''}" data-tab="${id}" type="button">${TAB_META[id]}</button>`)
+    .join('');
+
+  let body = '';
+  if (ui.progTab === 'volume') {
+    const vols = asc.slice(-12).map((h) => ({ key: h.key, label: shortDate(h.key), value: sessionStats(h).vol }));
+    const totalVol = asc.reduce((a, h) => a + sessionStats(h).vol, 0);
+    const best = asc.reduce((a, h) => Math.max(a, sessionStats(h).vol), 0);
+    body = fin.length
+      ? `<div class="prog-stats">
+          <div><b>${fin.length}</b><span>workouts</span></div>
+          <div><b>${fmtN(totalVol)}</b><span>kg lifted</span></div>
+          <div><b>${fmtN(best)}</b><span>best session</span></div>
+        </div>
+        <div class="panel chart-panel"><canvas id="prog-volume" class="prog-canvas" height="130"></canvas>
+        <div class="chart-legend"><span class="muted">Volume per workout (kg × reps)</span><span class="muted">last ${vols.length}</span></div></div>`
+      : `<div class="panel"><div class="empty-state">Finish a workout and your volume trend appears here.</div></div>`;
+  } else if (ui.progTab === 'strength') {
+    const names = exNamesNewestFirst(fin);
+    if (ui.progEx && !names.includes(ui.progEx)) ui.progEx = null;
+    const sel = ui.progEx || names[0] || null;
+    const pts = sel ? exSeries(sel, asc) : [];
+    if (!names.length) {
+      body = `<div class="panel"><div class="empty-state">Finish workouts to unlock strength trends.</div></div>`;
+    } else {
+      const chips = names.slice(0, 12)
+        .map((nm) => `<button class="chip${nm === sel ? ' sel' : ''}" data-ex-pick="${esc(nm)}" type="button">${esc(nm)}</button>`)
+        .join('');
+      const first = pts[0], last = pts[pts.length - 1];
+      const d = pts.length > 1 ? Math.round((last.value - first.value) * 10) / 10 : 0;
+      body = `<div class="chip-row scroll" id="prog-ex">${chips}</div>
+        <div class="prog-hero"><div class="prog-big"><span id="prog-str-val">${last ? fmtN(last.value, 1) : '—'}</span><span class="unit">kg</span></div>
+        <div class="prog-delta ${d >= 0 ? 'up' : 'down'}" id="prog-str-delta">${pts.length > 1 ? `${d >= 0 ? '+' : ''}${d} kg since ${S.fmtDate(first.key)}` : 'First logged session'}</div></div>
+        <div class="panel chart-panel"><canvas id="prog-strength" class="prog-canvas" height="150"></canvas>
+        <div class="chart-legend"><span class="muted" id="prog-ex-name">${esc(sel)} · heaviest set each session</span><span class="muted">${pts.length} session${pts.length === 1 ? '' : 's'}</span></div></div>`;
+    }
+  } else {
+    const series = S.weightSeries();
+    const latest = series.length ? series[series.length - 1] : null;
+    const cutoff = S.dayKey(new Date(Date.now() - 30 * 864e5));
+    const win = series.filter((w) => w.key >= cutoff);
+    const d = win.length > 1 ? Math.round((win[win.length - 1].kg - win[0].kg) * 10) / 10 : null;
+    body = latest
+      ? `<div class="prog-hero"><div class="prog-big"><span id="prog-latest-v">${fmtN(latest.kg, 1)}</span><span class="unit">kg</span></div>
+        <div class="prog-delta ${d === null || d <= 0 ? 'down' : 'up'}" id="prog-wt-delta">${d === null ? `logged ${S.fmtDate(latest.key)}` : `${d >= 0 ? '+' : ''}${d} kg in 30 days`}</div></div>
+        <div class="panel chart-panel"><canvas id="prog-weight" class="prog-canvas" height="150"></canvas>
+        <div class="chart-legend"><span class="muted">Your weigh-ins</span><span class="muted">tap the weight chip on Today to log</span></div></div>`
+      : `<div class="panel"><div class="empty-state">No weigh-ins yet.<br>Tap the weight chip on the Today screen to log one.</div></div>`;
+  }
+  return `<div class="page-head"><h1>Progress</h1><p class="muted">${esc(p.name)}</p></div>
+    <button class="link-btn" data-act="back" type="button">← Back</button>
+    <div class="chip-row seg" id="prog-tabs" style="margin-top:10px">${tabs}</div>
+    ${body}`;
+}
+
+function drawProgress() {
+  const fin = finishedSessions();
+  const asc = fin.slice().reverse();
+  if (ui.progTab === 'volume') {
+    const c = document.getElementById('prog-volume');
+    if (!c) return;
+    const vols = asc.slice(-12).map((h) => ({ label: shortDate(h.key), value: sessionStats(h).vol }));
+    const bestIdx = vols.reduce((bi, v, i) => (v.value > vols[bi].value ? i : bi), 0);
+    CH.bars(c, { data: vols, cssH: 130, labelEvery: 2, highlight: bestIdx, padB: 16, padT: 12 });
+  } else if (ui.progTab === 'strength') {
+    const c = document.getElementById('prog-strength');
+    if (!c) return;
+    const names = exNamesNewestFirst(fin);
+    const sel = ui.progEx || names[0] || null;
+    CH.line(c, { data: sel ? exSeries(sel, asc) : [], cssH: 150, unit: 'kg', minPad: 5 });
+  } else {
+    const c = document.getElementById('prog-weight');
+    if (!c) return;
+    CH.line(c, { data: S.weightSeries().slice(-60).map((w) => ({ label: shortDate(w.key), value: w.kg })), cssH: 150, unit: 'kg', minPad: 0.5 });
+  }
 }
 
 /* ── active session ── */
@@ -352,6 +465,12 @@ document.addEventListener('click', (e) => {
   const t = e.target;
   const pick = t.closest('[data-pick]');
   if (pick) { pickProgram(pick.dataset.pick); return; }
+  if (ui.mode === 'progress') {
+    const tab = t.closest('[data-tab]');
+    if (tab) { ui.progTab = tab.dataset.tab; renderTrain(); return; }
+    const exChip = t.closest('[data-ex-pick]');
+    if (exChip) { ui.progEx = exChip.dataset.exPick; renderTrain(); return; }
+  }
   const act = t.closest('[data-act]');
   if (act) {
     const a = act.dataset.act;
@@ -360,6 +479,7 @@ document.addEventListener('click', (e) => {
     if (a === 'discard') { discardSession(act); return; }
     if (a === 'chgprog') { ui.mode = 'picker'; renderTrain(); return; }
     if (a === 'back') { ui.mode = 'auto'; renderTrain(); return; }
+    if (a === 'progress') { ui.mode = 'progress'; renderTrain(); return; }
     if (a === 'log') { const row = act.closest('.setrow'); logSet(+row.dataset.ex, +row.dataset.set); return; }
     if (a === 'unlog') { const row = act.closest('.setrow'); unlogSet(+row.dataset.ex, +row.dataset.set); return; }
   }
@@ -404,6 +524,45 @@ function seedDemoTrain() {
     s.ex[1].sets[0] = { w: 55, r: 10, done: true, ts: Date.now() - 6 * 60000 };
     s.timer = { endAt: Date.now() + 71 * 1000, total: 90, kind: 'set', fired: false, label: 'Set 2/4 · Lat Pulldown', sub: 'Rest 1:30 — next set when it hits zero', goLabel: 'GO — Set 2/4 · Lat Pulldown', goSub: 'Tap to dismiss' };
     S.putSession(K(), s);
+  }
+  seedDemoTrainHistory();
+}
+
+function seedDemoTrainHistory() {
+  if (S.sessionHistory(90).some((h) => h.finishedAt)) return;
+  const p = PROGRAMS.muscle;
+  const DAYID = { 1: 'upperA', 2: 'lowerA', 4: 'upperB', 5: 'lowerB' };
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  for (let back = 56; back >= 1; back--) {
+    const d = new Date(start.getTime() - back * 864e5);
+    const dayId = DAYID[d.getDay()];
+    if (!dayId) continue;
+    const key = S.dayKey(d);
+    if (S.getSession(key)) continue;
+    const week = Math.floor((56 - back) / 7);
+    const def = p.days[dayId];
+    const base0 = dayId === 'lowerA' || dayId === 'lowerB' ? 70 : 55;
+    const ex = def.exercises.map((x, i) => {
+      const w = Math.round((base0 + i * 12 + week * 2.5) * 2) / 2;
+      const r0 = parseInt((/(\d+)/.exec(String(x.reps)) || [])[1] || '10', 10);
+      return {
+        name: x.name, reps: x.reps, rest: x.rest,
+        sets: Array.from({ length: x.sets }, (_, si) => ({
+          w: Math.max(2.5, Math.round((w - si * 2.5) * 2) / 2),
+          r: Math.max(3, r0 - si),
+          done: true,
+          ts: d.getTime() + 18 * 3600e3 + (i * 8 + si * 2) * 60e3,
+        })),
+      };
+    });
+    S.putSession(key, {
+      programId: p.id, programName: p.name, dayId, dayLabel: def.label,
+      startedAt: d.getTime() + 18 * 3600e3,
+      finishedAt: d.getTime() + 18 * 3600e3 + 58 * 60e3,
+      timer: null,
+      ex,
+    });
   }
 }
 

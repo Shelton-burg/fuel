@@ -8,7 +8,7 @@ export const DEFAULT_PROFILE = { sex: 'male', age: 38, height: 180, weight: 85, 
 export const DEFAULT_GOALS = { kcal: 2550, protein: 180, carbs: 255, fat: 71 };
 
 function fresh() {
-  return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, settings: {}, meta: { created: Date.now() } };
+  return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, settings: {}, meta: { created: Date.now() } };
 }
 
 let state = load();
@@ -181,6 +181,27 @@ export function lastSetsFor(exName, excludeKey) {
     }
   }
   return null;
+}
+/* ── body weight log ── */
+export function logWeight(key, kg) {
+  state.weights = state.weights || {};
+  state.weights[key] = kg;
+  const keys = Object.keys(state.weights).sort();
+  const latest = keys[keys.length - 1];
+  if (latest) state.profile.weight = state.weights[latest]; // keep calorie targets honest
+  save();
+}
+export function getWeight(key) { return (state.weights || {})[key]; }
+export function latestWeight() {
+  const keys = Object.keys(state.weights || {}).sort();
+  if (!keys.length) return null;
+  const k = keys[keys.length - 1];
+  return { key: k, kg: state.weights[k] };
+}
+export function weightSeries() {
+  return Object.entries(state.weights || {})
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([key, kg]) => ({ key, kg }));
 }
 export function getSetting(k) { return (state.settings || {})[k]; }
 export function setSetting(k, v) {

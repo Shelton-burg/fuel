@@ -577,3 +577,33 @@ svg.sm { width:14px; height:14px; }
 /* loading / empty */
 .empty-state { text-align:center; padding:34px 20px; color:var(--muted); font-size:14px; }
 .loading-row { display:flex; align-items:center; justify-content:center; gap:10px; padding:22px; color:var(--muted); font-size:13.5px; }
+
+/* ── progress charts ─────────────────────────────────────── */
+button.stat-chip:active { transform:scale(.96); }
+.chip { font-size:13px; font-weight:600; color:var(--text-2); background:var(--panel-2); border:1px solid var(--line); padding:8px 14px; border-radius:999px; white-space:nowrap; }
+.chip.sel { border-color:rgba(255,161,23,.55); color:var(--amber); background:var(--amber-soft); }
+.chip:active { transform:scale(.96); }
+.chip-row { display:flex; gap:8px; margin-bottom:12px; }
+.chart-panel .chip-row { padding:0 4px 2px; margin-bottom:8px; }
+.chip-row.scroll { overflow-x:auto; padding-bottom:5px; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+.chip-row.scroll::-webkit-scrollbar { display:none; }
+.week-panel { padding:14px 12px 10px; }
+.week-panel:active { transform:scale(.99); }
+.week-head { display:flex; justify-content:space-between; align-items:baseline; padding:0 6px 8px; }
+.week-head .ph2 { margin:0; }
+#week-chart { width:100%; display:block; }
+.prog-canvas { width:100%; display:block; }
+.prog-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-bottom:14px; }
+.prog-stats > div { background:var(--panel-2); border:1px solid var(--line); border-radius:14px; padding:10px 6px 9px; text-align:center; }
+.prog-stats b { font-family:var(--font-num); font-size:15.5px; display:block; font-variant-numeric:tabular-nums; }
+.prog-stats span { font-size:10px; color:var(--muted); font-weight:700; text-transform:uppercase; letter-spacing:.05em; display:block; margin-top:2px; }
+.prog-hero { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin:2px 2px 12px; }
+.prog-big { font-family:var(--font-num); font-size:40px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.prog-big .unit { font-size:14px; color:var(--muted); font-weight:600; margin-left:5px; }
+.prog-delta { font-size:13px; font-weight:600; }
+.prog-delta.down { color:var(--good); }
+.prog-delta.up { color:var(--amber); }
+.wt-list { margin-bottom:12px; }
+.wt-row { display:flex; justify-content:space-between; padding:8px 2px; border-bottom:1px solid var(--line); font-size:13.5px; }
+.wt-row:last-child { border-bottom:0; }
+.wt-row b { font-variant-numeric:tabular-nums; }

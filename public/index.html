@@ -79,7 +79,7 @@
 
       <div class="stat-row">
         <div class="stat-chip" id="chip-streak"><span class="stat-ico">🔥</span><span id="streak-val">1 day streak</span></div>
-        <div class="stat-chip" id="chip-weight"><span class="stat-ico"><svg class="sm"><use href="#i-body"/></svg></span><span id="weight-val">— kg</span></div>
+        <button class="stat-chip" id="chip-weight" type="button" aria-label="Log weight"><span class="stat-ico"><svg class="sm"><use href="#i-body"/></svg></span><span id="weight-val">— kg</span></button>
       </div>
 
       <div class="macro-row">
@@ -101,6 +101,11 @@
       </div>
 
       <div class="meals" id="meals"></div>
+
+      <div class="panel week-panel" id="week-panel" role="button" tabindex="0" aria-label="Open history">
+        <div class="week-head"><h2 class="ph2">This week</h2><span class="muted" id="week-sub"></span></div>
+        <canvas id="week-chart" height="64"></canvas>
+      </div>
     </section>
 
     <!-- ══ TRAIN ══ -->
@@ -112,8 +117,12 @@
     <section id="view-history" class="view">
       <div class="page-head"><h1>History</h1><p class="muted">Last 14 days</p></div>
       <div class="panel chart-panel">
+        <div class="chip-row seg" id="hist-metrics">
+          <button class="chip sel" data-metric="kcal" type="button">Calories</button>
+          <button class="chip" data-metric="protein" type="button">Protein</button>
+        </div>
         <canvas id="hist-chart" height="120"></canvas>
-        <div class="chart-legend"><span class="muted">Daily kcal vs goal</span><span id="hist-avg" class="muted"></span></div>
+        <div class="chart-legend"><span class="muted" id="hist-legend">Daily kcal vs goal</span><span id="hist-avg" class="muted"></span></div>
       </div>
       <div class="hist-list" id="history-list"></div>
     </section>

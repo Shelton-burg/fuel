@@ -1,6 +1,7 @@
 // FUEL — app UI + flows.
 import * as S from './store.js';
 import * as OFF from './off.js';
+import * as CH from './charts.js';
 
 const $ = (q, r = document) => r.querySelector(q);
 const $$ = (q, r = document) => [...r.querySelectorAll(q)];
@@ -17,6 +18,7 @@ const MEAL_META = {
 
 /* ══════════ init ══════════ */
 let selDate = S.dayKey(); // the day being viewed/edited (day navigation)
+let histMetric = 'kcal'; // history chart metric: kcal | protein
 const isToday = () => selDate === S.dayKey();
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
@@ -28,6 +30,15 @@ renderAll();
 $('#btn-fab').addEventListener('click', openAddSheet);
 $('#btn-date').addEventListener('click', openDaySheet);
 $('#daynav-pill').addEventListener('click', () => setDay(S.dayKey()));
+$('#chip-weight').addEventListener('click', weightModal);
+$('#week-panel').addEventListener('click', () => switchView('history'));
+$('#hist-metrics').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-metric]');
+  if (!b) return;
+  histMetric = b.dataset.metric;
+  renderHistory();
+  vib(5);
+});
 $('#history-list').addEventListener('click', (e) => {
   const row = e.target.closest('[data-day]');
   if (row) navigateToDay(row.dataset.day);
@@ -119,6 +130,7 @@ function switchView(v) {
   $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
   vib(6);
   if (v === 'history') renderHistory();
+  if (v === 'today') renderWeek();
 }
 
 /* ══════════ today render ══════════ */
@@ -194,6 +206,7 @@ function renderToday() {
       ${items.length ? `<div class="meal-items">${rows}</div>` : ''}
     </div>`;
   }).join('');
+  renderWeek();
 }
 
 $('#meals').addEventListener('click', (e) => {
@@ -685,77 +698,108 @@ function manualModal() {
 }
 
 /* ══════════ history ══════════ */
+const METRIC_META = {
+  kcal: { legend: 'Daily kcal vs goal', unit: 'kcal' },
+  protein: { legend: 'Daily protein vs goal', unit: 'g' },
+};
+
 function renderHistory() {
-  const days = S.recentDays(14).slice(0, 14);
-  const goal = S.getState().goals.kcal;
+  const days = S.recentDays(14);
+  const st = S.getState();
+  const meta = METRIC_META[histMetric] || METRIC_META.kcal;
+  const goal = histMetric === 'protein' ? st.goals.protein : st.goals.kcal;
+  const val = (d) => (histMetric === 'protein' ? d.totals.p : d.totals.kcal);
+
+  $('#hist-legend').textContent = meta.legend;
+  $$('#hist-metrics .chip').forEach((c) => c.classList.toggle('sel', c.dataset.metric === histMetric));
+
   const logged = days.filter((d) => d.any);
-  const avg = logged.length ? Math.round(logged.reduce((a, d) => a + d.totals.kcal, 0) / logged.length) : 0;
-  $('#hist-avg').textContent = logged.length ? `avg ${fmt(avg)} kcal · goal ${fmt(goal)}` : '';
+  const avg = logged.length ? Math.round(logged.reduce((a, d) => a + val(d), 0) / logged.length) : 0;
+  $('#hist-avg').textContent = logged.length ? `avg ${fmt(avg)} ${meta.unit} · goal ${fmt(goal)} ${meta.unit}` : '';
 
-  // chart
-  const c = $('#hist-chart');
-  const dpr = window.devicePixelRatio || 1;
-  const W = c.clientWidth || 320, H = 120;
-  c.width = W * dpr; c.height = H * dpr;
-  const ctx = c.getContext('2d');
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, W, H);
-  const n = days.length, gap = 4, bw = (W - gap * (n - 1)) / n;
-  const maxV = Math.max(goal * 1.4, ...days.map((d) => d.totals.kcal));
-  const y = (v) => H - 14 - (v / maxV) * (H - 26);
-  // goal line
-  ctx.strokeStyle = 'rgba(255,161,23,.5)';
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath(); ctx.moveTo(0, y(goal)); ctx.lineTo(W, y(goal)); ctx.stroke();
-  ctx.setLineDash([]);
-  days.slice().reverse().forEach((d, i) => {
-    const val = d.totals.kcal;
-    const x = i * (bw + gap);
-    const over = val > goal;
-    const grad = ctx.createLinearGradient(0, y(val), 0, H - 14);
-    grad.addColorStop(0, over ? '#FF5D6C' : '#FFB224');
-    grad.addColorStop(1, over ? 'rgba(255,93,108,.25)' : 'rgba(255,122,0,.25)');
-    ctx.fillStyle = val ? grad : 'rgba(255,255,255,.05)';
-    const h = val ? Math.max(H - 14 - y(val), 3) : 3;
-    const r = Math.min(bw / 2, 5);
-    const bx = x, by = y(Math.max(val, 0)), bh = h;
-    ctx.beginPath();
-    ctx.moveTo(bx + r, by);
-    ctx.arcTo(bx + bw, by, bx + bw, by + bh, r);
-    ctx.arcTo(bx + bw, by + bh, bx, by + bh, r);
-    ctx.arcTo(bx, by + bh, bx, by, r);
-    ctx.arcTo(bx, by, bx + bw, by, r);
-    ctx.closePath();
-    ctx.fill();
-  });
-  ctx.fillStyle = 'rgba(255,255,255,.35)';
-  ctx.font = '10px Inter, sans-serif';
-  days.slice().reverse().forEach((d, i) => {
-    if (i % 3 === 0 || i === n - 1) {
-      const x = i * (bw + gap) + bw / 2;
-      const lbl = d.key.slice(8);
-      ctx.fillText(lbl, x - 5, H - 2);
-    }
+  CH.bars($('#hist-chart'), {
+    data: days.slice().reverse().map((d) => ({ label: d.key.slice(8), value: val(d) })),
+    goal,
+    cssH: 120,
+    labelEvery: 3,
+    overColor: histMetric === 'kcal', // over-goal red only means something for calories
   });
 
-  // list
   const list = $('#history-list');
-  const loggedDays = days.filter((d) => d.any);
-  if (!loggedDays.length) {
+  if (!logged.length) {
     list.innerHTML = `<div class="empty-state">No days logged yet.<br>Once you start logging, your history lands here.</div>`;
     return;
   }
-  list.innerHTML = loggedDays
+  list.innerHTML = logged
     .map((d) => {
       const t = d.totals;
-      const under = t.kcal <= goal;
+      const under = histMetric === 'protein' ? t.p >= st.goals.protein : t.kcal <= st.goals.kcal;
+      const num = histMetric === 'protein' ? fmt(Math.round(t.p)) + 'g' : fmt(t.kcal);
       return `<button class="hrow" data-day="${d.key}" type="button">
       <div class="hrow-day"><div class="hrow-date">${S.fmtDate(d.key)}</div><div class="hrow-sub">P ${fmt(Math.round(t.p))}g · C ${fmt(Math.round(t.c))}g · F ${fmt(Math.round(t.f))}g</div></div>
-      <div class="hrow-kcal ${under ? 'under' : 'over'}">${fmt(t.kcal)}</div>
+      <div class="hrow-kcal ${under ? 'under' : 'over'}">${num}</div>
       <svg class="hrow-chev"><use href="#i-chev"/></svg>
     </button>`;
     })
     .join('');
+}
+
+/* ══════════ this week (mini chart on Today) ══════════ */
+function renderWeek() {
+  const panel = $('#week-panel');
+  if (!panel) return;
+  const days = S.recentDays(7).slice().reverse(); // oldest → newest
+  const goal = S.getState().goals.kcal;
+  const logged = days.filter((d) => d.any);
+  const avg = logged.length ? Math.round(logged.reduce((a, d) => a + d.totals.kcal, 0) / logged.length) : 0;
+  $('#week-sub').textContent = logged.length ? `avg ${fmt(avg)} kcal · ${logged.length}/7 logged` : 'nothing logged yet';
+  const hi = days.findIndex((d) => d.key === selDate);
+  CH.bars($('#week-chart'), {
+    data: days.map((d) => {
+      const [y, m, dd] = d.key.split('-').map(Number);
+      const wd = new Date(y, m - 1, dd).toLocaleDateString('en-AU', { weekday: 'narrow' });
+      return { label: wd, value: d.totals.kcal };
+    }),
+    goal,
+    cssH: 64,
+    labelEvery: 1,
+    highlight: hi,
+    padB: 16,
+    padT: 10,
+  });
+}
+
+/* ══════════ body weight log ══════════ */
+function weightModal() {
+  const latest = S.latestWeight();
+  const cur = S.getWeight(selDate) ?? latest?.kg ?? S.getState().profile.weight;
+  const recent = S.weightSeries().slice(-5).reverse();
+  const rows = recent
+    .map((w) => `<div class="wt-row"><span>${S.fmtDate(w.key)}</span><b>${fmt(w.kg, 1)} kg</b></div>`)
+    .join('');
+  const { wrap, close } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">Log weight</div>
+    </div>
+    <div class="field"><span>Weight for ${S.fmtDate(selDate)} (kg)</span>
+      <input id="w-val" type="number" inputmode="decimal" step="0.1" min="30" max="250" value="${fmt(cur, 1)}"></div>
+    ${rows ? `<div class="wt-list">${rows}</div>` : ''}
+    <p class="nutri-note">Recent check-ins above. Your latest entry keeps the calorie target in sync — the date chip decides which day it lands on.</p>
+    <button class="btn primary" data-save type="button">Save weight</button>
+  `);
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { close(); return; }
+    if (e.target.closest('[data-save]')) {
+      const v = parseFloat($('#w-val', wrap).value);
+      if (!(v >= 30 && v <= 250)) { toast('Enter a weight between 30–250 kg', 'i-x'); return; }
+      S.logWeight(selDate, Math.round(v * 10) / 10);
+      close();
+      renderToday();
+      vib(12);
+      toast(`Weight logged — ${fmt(Math.round(v * 10) / 10, 1)} kg`);
+    }
+  });
 }
 
 /* ══════════ settings ══════════ */
@@ -854,5 +898,32 @@ function seedDemo() {
     ['snacks', { name: 'Protein Shake', brand: 'Optimum Nutrition', kcal: 120, p: 24, c: 3, f: 1.5, qtyLabel: '30 g + water' }],
   ];
   for (const [meal, e] of demo) S.addEntry(meal, e);
+
+  // two weeks of believable history — drives the History chart, This-week strip and day dots
+  const hist = [
+    [13, 2240, 172, 214, 76], [12, 2610, 188, 268, 88], [11, 2380, 181, 232, 80],
+    [10, 2120, 163, 205, 71], [8, 2520, 196, 246, 82], [7, 2780, 175, 295, 92],
+    [6, 2310, 188, 218, 74], [4, 2460, 190, 240, 79], [3, 2190, 171, 208, 72],
+    [1, 2350, 182, 226, 77],
+  ];
+  const split = [
+    ['breakfast', 'Oats & berries', 0.25],
+    ['lunch', 'Chicken rice bowl', 0.4],
+    ['dinner', 'Salmon & greens', 0.35],
+  ];
+  for (const [ago, kcal, p, c, f] of hist) {
+    const key = S.dayKey(new Date(Date.now() - ago * 864e5));
+    for (const [meal, name, part] of split) {
+      S.addEntry(meal, {
+        name, kcal: Math.round(kcal * part), p: Math.round(p * part), c: Math.round(c * part), f: Math.round(f * part),
+        qtyLabel: '1 serve',
+      }, key);
+    }
+  }
+
+  // weight check-ins trending gently down (drives Progress → Weight)
+  const ws = [[45, 87.2], [42, 87.0], [38, 86.7], [34, 86.9], [31, 86.3], [27, 86.0], [24, 85.8], [20, 85.9], [17, 85.3], [13, 85.1], [10, 84.9], [7, 84.8], [4, 84.7], [2, 84.6]];
+  for (const [ago, kg] of ws) S.logWeight(S.dayKey(new Date(Date.now() - ago * 864e5)), kg);
+
   renderToday();
 }
