@@ -585,32 +585,56 @@ function searchModal() {
   let ctrl = null;
   let idleTimer = null;
 
-  const rowHTML = (f, i) => `<button class="food-row" data-i="${i}" type="button">
-        ${f.image ? `<img class="food-thumb" src="${esc(f.image)}" alt="" loading="lazy">` : `<span class="food-thumb ph"><svg><use href="#i-search"/></svg></span>`}
-        <div class="food-main"><div class="food-name">${esc(f.name)}</div><div class="food-brand">${esc(f.brand || '')}</div></div>
-        <div class="food-kcal">${f.basis === '100g' ? fmt(f.kcal) + ' kcal<small>per 100 g</small>' : fmt(f.kcal) + ' kcal<small>per serve</small>'}</div>
+  // every rendered row is { f, act:'open'|'quick', star:bool, sub?, note? }
+  const starHTML = (i, on) => `<span class="food-star${on ? ' on' : ''}" data-star="${i}" role="button" aria-label="Favourite"><svg><use href="#i-star"/></svg></span>`;
+  const rowHTML = (r, i) => `<button class="food-row" data-i="${i}" type="button">
+        ${r.f.image ? `<img class="food-thumb" src="${esc(r.f.image)}" alt="" loading="lazy">` : `<span class="food-thumb ph"><svg><use href="#i-search"/></svg></span>`}
+        <div class="food-main"><div class="food-name">${esc(r.f.name)}</div><div class="food-brand">${esc(r.sub || r.f.brand || '')}</div></div>
+        ${r.star ? starHTML(i, S.isFoodFav(r.f.name)) : ''}
+        <div class="food-kcal">${fmt(r.f.kcal)} kcal<small>${esc(r.note || (r.f.basis === '100g' ? 'per 100 g' : 'per serve'))}</small></div>
       </button>`;
 
-  const SEC_PLAIN = '<div class="food-sec">Plain foods <span>· typical values</span></div>';
-  const SEC_BRAND = '<div class="food-sec">Packaged &amp; branded</div>';
+  const open  = (f) => ({ f, act: 'open', star: true });
+  const quick = (f) => ({ f, act: 'quick', star: false, sub: `${f.count || 1}× logged${f.qtyLabel ? ' · ' + f.qtyLabel : ''}`, note: f.qtyLabel || 'last portion' });
 
-  const showResults = (plain, off, errMsg) => {
-    const list = [...plain, ...(off || [])];
-    results._list = list;
-    let html = (plain.length ? SEC_PLAIN + plain.map((f, i) => rowHTML(f, i)).join('') : '')
-      + (off && off.length ? SEC_BRAND + off.map((f, i) => rowHTML(f, plain.length + i)).join('') : '');
-    if (!list.length) {
-      html = errMsg
-        ? `<div class="empty-state">Packaged results are having a moment (${esc(errMsg)}).<br>Plain foods still work — try "chicken breast", "pumpkin" or "white rice".</div>`
-        : `<div class="empty-state">No matches.<br>Try a shorter or different word — or snap the label instead.</div>`;
-    } else if (errMsg) {
-      html += `<div class="empty-state">Packaged results are having a moment — the plain foods above still work.</div>`;
+  const paint = (parts, tail = '') => {
+    const rows = [];
+    let html = '';
+    for (const p of parts) {
+      if (!p.items.length) continue;
+      html += `<div class="food-sec">${p.label}</div>`;
+      for (const r of p.items) { html += rowHTML(r, rows.length); rows.push(r); }
     }
-    results.innerHTML = html;
+    results._rows = rows;
+    results.innerHTML = (html + tail) || `<div class="empty-state">No matches.<br>Try a shorter or different word — or snap the label instead.</div>`;
   };
 
-  const pendingHTML = (plain) => (plain.length ? SEC_PLAIN + plain.map((f, i) => rowHTML(f, i)).join('') : '')
-    + `<div class="loading-row"><div class="spinner"></div>Searching packaged foods…</div>`;
+  // empty box → the user's own foods first, so most logging needs zero typing
+  const showHome = () => {
+    const favs = S.foodFavs().map(open);
+    const freq = S.frequentFoods(6).map(quick);
+    const common = PLAIN.commonBasics(8).map(open);
+    const fresh = !favs.length && !freq.length;
+    paint([
+      { label: 'Your favourites <span>· starred — tap to log</span>', items: favs },
+      { label: 'Often logged <span>· one tap re-logs it</span>', items: freq },
+      { label: fresh ? 'Common foods <span>· star ✩ any food to pin it up here</span>' : 'Common foods', items: common },
+    ]);
+  };
+
+  const showResults = (plain, off, errMsg) => {
+    paint(
+      [
+        { label: 'Plain foods <span>· typical values</span>', items: plain.map(open) },
+        { label: 'Packaged &amp; branded', items: (off || []).map(open) },
+      ],
+      errMsg && (plain.length || (off || []).length) ? `<div class="empty-state">Packaged results are having a moment — the plain foods above still work.</div>` : ''
+    );
+    if (!results._rows.length && errMsg) results.innerHTML = `<div class="empty-state">Search is having a moment (${esc(errMsg)}).<br>Plain foods still work — try "chicken breast", "pumpkin" or "white rice".</div>`;
+  };
+
+  const pending = (plain) => paint([{ label: 'Plain foods <span>· typical values</span>', items: plain.map(open) }],
+    `<div class="loading-row"><div class="spinner"></div>Searching packaged foods…</div>`);
 
   const run = async () => {
     const q = input.value.trim();
@@ -620,8 +644,7 @@ function searchModal() {
     if (ctrl) ctrl.abort();
     if (cache.has(q)) { showResults(plain, cache.get(q)); return; }
     ctrl = new AbortController();
-    results._list = plain;
-    results.innerHTML = pendingHTML(plain);
+    pending(plain);
     try {
       const list = await OFF.searchFoods(q, 24, ctrl.signal);
       if (my !== seq) return; // a newer search is in flight
@@ -638,11 +661,9 @@ function searchModal() {
   input.addEventListener('input', () => {
     const q = input.value.trim();
     clearTimeout(idleTimer);
-    if (!q) { showResults(PLAIN.commonBasics(10), []); return; }
-    if (q.length < 2) { results._list = []; results.innerHTML = `<div class="empty-state">Keep typing…</div>`; return; }
-    const plain = PLAIN.searchBasics(q, 6);
-    results._list = plain;
-    results.innerHTML = pendingHTML(plain);
+    if (!q) { showHome(); return; }
+    if (q.length < 2) { results._rows = []; results.innerHTML = `<div class="empty-state">Keep typing…</div>`; return; }
+    pending(PLAIN.searchBasics(q, 6));
     idleTimer = setTimeout(run, 350);
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(idleTimer); run(); } });
@@ -651,15 +672,35 @@ function searchModal() {
   btn.textContent = 'Search';
   btn.addEventListener('click', () => { clearTimeout(idleTimer); run(); });
   results.after(btn);
-  showResults(PLAIN.commonBasics(10), []); // useful the moment it opens
+  showHome(); // his own foods + common foods the moment it opens
 
   wrap.addEventListener('click', (e) => {
-    if (e.target.closest('[data-close]')) wrap.remove();
-    const row = e.target.closest('[data-i]');
-    if (row) {
-      const f = results._list[Number(row.dataset.i)];
-      if (f) { wrap.remove(); portionModal(f); }
+    if (e.target.closest('[data-close]')) { wrap.remove(); return; }
+    const star = e.target.closest('[data-star]');
+    if (star) {
+      const r = results._rows?.[Number(star.dataset.star)];
+      if (r) {
+        const on = S.toggleFoodFav(r.f);
+        star.classList.toggle('on', on);
+        vib(8);
+        toast(on ? `${r.f.name} starred — it'll be waiting here next time` : 'Removed from favourites');
+      }
+      return; // never open the sheet on a star tap
     }
+    const row = e.target.closest('[data-i]');
+    if (!row) return;
+    const r = results._rows?.[Number(row.dataset.i)];
+    if (!r) return;
+    if (r.act === 'quick') {
+      S.addEntry(mealForNow(), { name: r.f.name, kcal: r.f.kcal, p: r.f.p || 0, c: r.f.c || 0, f: r.f.f || 0, qtyLabel: r.f.qtyLabel || '' }, selDate);
+      wrap.remove();
+      vib(10);
+      renderToday();
+      toast(`${r.f.name} added — ${fmt(r.f.kcal)} kcal${isToday() ? '' : ' · ' + S.fmtDate(selDate)}`);
+      return;
+    }
+    wrap.remove();
+    portionModal(r.f);
   });
 }
 

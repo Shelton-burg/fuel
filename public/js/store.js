@@ -247,6 +247,30 @@ export function removeUsual(id) {
   state.settings.usuals = (state.settings.usuals || []).filter((u) => u.id !== id);
   save();
 }
+/* ── favourite foods (starred from search) ── */
+export function foodFavs() { return (state.settings || {}).foodFavs || []; }
+export function isFoodFav(name) {
+  const k = String(name || '').toLowerCase().trim();
+  return foodFavs().some((f) => String(f.name || '').toLowerCase().trim() === k);
+}
+export function toggleFoodFav(food) {
+  state.settings = state.settings || {};
+  const k = String(food.name || '').toLowerCase().trim();
+  const list = state.settings.foodFavs || [];
+  const i = list.findIndex((f) => String(f.name || '').toLowerCase().trim() === k);
+  if (i >= 0) list.splice(i, 1);
+  else {
+    list.unshift({
+      name: food.name, brand: food.brand || '', basis: food.basis || '100g',
+      kcal: food.kcal, p: food.p || 0, c: food.c || 0, f: food.f || 0,
+      kcal100: food.kcal100 ?? null, servingLabel: food.servingLabel || '',
+      barcode: food.barcode || null, image: food.image || null,
+    });
+  }
+  state.settings.foodFavs = list.slice(0, 40);
+  save();
+  return i < 0; // true = now starred
+}
 export function logUsual(id, key) {
   const u = (state.settings?.usuals || []).find((x) => x.id === id);
   if (!u) return null;

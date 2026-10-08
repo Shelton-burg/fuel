@@ -740,3 +740,10 @@ button.stat-chip:active { transform:scale(.96); }
   padding: 12px 4px 5px;
 }
 .food-sec span { font-weight: 500; letter-spacing: 0.2px; text-transform: none; }
+
+/* Food search: favourite star on rows */
+.food-star { flex: 0 0 auto; width: 32px; height: 32px; display: grid; place-items: center; color: var(--muted); opacity: .55; border-radius: 9px; }
+.food-star svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; }
+.food-star.on { color: var(--amber); opacity: 1; }
+.food-star.on svg { fill: currentColor; stroke: none; }
+.food-star:active { background: var(--amber-soft); }
