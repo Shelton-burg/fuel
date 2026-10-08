@@ -1,6 +1,7 @@
 // FUEL — app UI + flows.
 import * as S from './store.js';
 import * as OFF from './off.js';
+import * as PLAIN from './plains.js';
 import * as CH from './charts.js';
 import * as SY from './sync.js';
 import { dayIdFor, PROGRAMS } from './programs.js';
@@ -584,45 +585,64 @@ function searchModal() {
   let ctrl = null;
   let idleTimer = null;
 
-  const showList = (list) => {
-    if (!list.length) { results.innerHTML = `<div class="empty-state">No matches.<br>Try a shorter or different word — or snap the label instead.</div>`; return; }
-    results.innerHTML = list
-      .map(
-        (f, i) => `<button class="food-row" data-i="${i}" type="button">
+  const rowHTML = (f, i) => `<button class="food-row" data-i="${i}" type="button">
         ${f.image ? `<img class="food-thumb" src="${esc(f.image)}" alt="" loading="lazy">` : `<span class="food-thumb ph"><svg><use href="#i-search"/></svg></span>`}
         <div class="food-main"><div class="food-name">${esc(f.name)}</div><div class="food-brand">${esc(f.brand || '')}</div></div>
         <div class="food-kcal">${f.basis === '100g' ? fmt(f.kcal) + ' kcal<small>per 100 g</small>' : fmt(f.kcal) + ' kcal<small>per serve</small>'}</div>
-      </button>`
-      )
-      .join('');
+      </button>`;
+
+  const SEC_PLAIN = '<div class="food-sec">Plain foods <span>· typical values</span></div>';
+  const SEC_BRAND = '<div class="food-sec">Packaged &amp; branded</div>';
+
+  const showResults = (plain, off, errMsg) => {
+    const list = [...plain, ...(off || [])];
     results._list = list;
+    let html = (plain.length ? SEC_PLAIN + plain.map((f, i) => rowHTML(f, i)).join('') : '')
+      + (off && off.length ? SEC_BRAND + off.map((f, i) => rowHTML(f, plain.length + i)).join('') : '');
+    if (!list.length) {
+      html = errMsg
+        ? `<div class="empty-state">Packaged results are having a moment (${esc(errMsg)}).<br>Plain foods still work — try "chicken breast", "pumpkin" or "white rice".</div>`
+        : `<div class="empty-state">No matches.<br>Try a shorter or different word — or snap the label instead.</div>`;
+    } else if (errMsg) {
+      html += `<div class="empty-state">Packaged results are having a moment — the plain foods above still work.</div>`;
+    }
+    results.innerHTML = html;
   };
+
+  const pendingHTML = (plain) => (plain.length ? SEC_PLAIN + plain.map((f, i) => rowHTML(f, i)).join('') : '')
+    + `<div class="loading-row"><div class="spinner"></div>Searching packaged foods…</div>`;
 
   const run = async () => {
     const q = input.value.trim();
     if (q.length < 2) return;
+    const plain = PLAIN.searchBasics(q, 6);
     const my = ++seq;
     if (ctrl) ctrl.abort();
-    if (cache.has(q)) { showList(cache.get(q)); return; }
+    if (cache.has(q)) { showResults(plain, cache.get(q)); return; }
     ctrl = new AbortController();
-    results.innerHTML = `<div class="loading-row"><div class="spinner"></div>Searching 4M+ foods…</div>`;
+    results._list = plain;
+    results.innerHTML = pendingHTML(plain);
     try {
       const list = await OFF.searchFoods(q, 24, ctrl.signal);
       if (my !== seq) return; // a newer search is in flight
       cache.set(q, list);
       if (cache.size > 20) cache.delete(cache.keys().next().value);
-      showList(list);
+      showResults(plain, list);
     } catch (err) {
       if (my !== seq || (err && err.name === 'AbortError')) return;
-      results.innerHTML = `<div class="empty-state">Search is having a moment (${esc(err.message)}).<br>Try again shortly.</div>`;
+      showResults(plain, [], err.message);
     }
   };
-  // live search as you type: 2+ chars, one call per pause
+  // live search as you type: plain foods filter instantly (local table),
+  // packaged results fire 350ms after the last keystroke
   input.addEventListener('input', () => {
     const q = input.value.trim();
     clearTimeout(idleTimer);
-    if (!q) { results.innerHTML = ''; return; }
-    if (q.length < 2) return;
+    if (!q) { showResults(PLAIN.commonBasics(10), []); return; }
+    if (q.length < 2) { results._list = []; results.innerHTML = `<div class="empty-state">Keep typing…</div>`; return; }
+    const plain = PLAIN.searchBasics(q, 6);
+    results._list = plain;
+    results.innerHTML = pendingHTML(plain);
     idleTimer = setTimeout(run, 350);
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(idleTimer); run(); } });
@@ -631,6 +651,7 @@ function searchModal() {
   btn.textContent = 'Search';
   btn.addEventListener('click', () => { clearTimeout(idleTimer); run(); });
   results.after(btn);
+  showResults(PLAIN.commonBasics(10), []); // useful the moment it opens
 
   wrap.addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) wrap.remove();
