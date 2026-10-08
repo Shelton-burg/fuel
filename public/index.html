@@ -43,6 +43,7 @@
   <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3.5c3 3.6 6 6.8 6 10.5a6 6 0 0 1-12 0c0-3.7 3-6.9 6-10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
   <symbol id="i-body" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="2.8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 9.2c-3.1 0-5.6 1.7-5.6 4V16h11.2v-2.8c0-2.3-2.5-4-5.6-4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.6l2.6 5.2 5.8.9-4.2 4.1 1 5.7-5.2-2.7-5.2 2.7 1-5.7L3.6 9.7l5.8-.9z"/></symbol>
+  <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 4.5h12V21l-6-4.2L6 21V4.5z"/></symbol>
 </svg>
 
 <div id="app">
@@ -103,6 +104,15 @@
 
       <div class="meals" id="meals"></div>
 
+      <div class="panel quick-panel" id="quick-panel">
+        <div class="quick-head"><h2 class="ph2">Quick add</h2><span class="muted sm" id="quick-sub"></span></div>
+        <div id="quick-usuals"></div>
+        <div class="q-label muted sm" id="q-freq-label">You eat often</div>
+        <div class="chip-row wrap" id="quick-freq"></div>
+        <div class="q-label muted sm" id="q-fit-label" hidden>Fits what's left</div>
+        <div class="chip-row wrap" id="quick-fit"></div>
+      </div>
+
       <div class="panel week-panel" id="week-panel" role="button" tabindex="0" aria-label="Open history">
         <div class="week-head"><h2 class="ph2">This week</h2><span class="muted" id="week-sub"></span></div>
         <canvas id="week-chart" height="64"></canvas>
@@ -125,6 +135,13 @@
         <canvas id="hist-chart" height="120"></canvas>
         <div class="chart-legend"><span class="muted" id="hist-legend">Daily kcal vs goal</span><span id="hist-avg" class="muted"></span></div>
       </div>
+
+      <div class="panel heat-panel">
+        <div class="heat-head"><h2 class="ph2">Consistency</h2><span class="muted sm" id="streak-line"></span></div>
+        <div class="heat-grid" id="heat-grid"></div>
+        <p class="heat-cap muted sm">Last 12 weeks · colour = calories vs goal · tap a day to open it</p>
+      </div>
+
       <div class="hist-list" id="history-list"></div>
     </section>
 

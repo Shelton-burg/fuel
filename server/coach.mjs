@@ -89,3 +89,98 @@ export async function coachAdvice(payload, apiKey) {
   err.detail = lastErr;
   throw err;
 }
+
+/* ══════════ weekly check-in ══════════ */
+// Same philosophy as coachAdvice: every number the model may suggest is pre-computed
+// client-side and passed in as tweakOptions — sanitize() drops anything off-list.
+
+const WEEKLY_SCHEMA = {
+  type: 'object',
+  properties: {
+    headline: { type: 'string' },
+    summary: { type: 'string' },
+    wins: { type: 'array', items: { type: 'string' } },
+    watch: { type: 'array', items: { type: 'string' } },
+    tweaks: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          kind: { type: 'string', enum: ['kcal', 'protein', 'rate', 'program', 'none'] },
+          suggest: { type: 'string' },
+          why: { type: 'string' },
+        },
+        required: ['kind', 'why'],
+      },
+    },
+  },
+  required: ['headline', 'summary', 'wins', 'watch', 'tweaks'],
+};
+
+const WEEKLY_RULES = `You are FUEL's fitness & nutrition coach doing the weekly check-in.
+Data: the user's stats, goals, this week vs last week averages, weight trend, training summary, and tweakOptions.
+Rules:
+- headline: one short line (max ~60 chars).
+- summary: 2-4 sentences reviewing the week honestly, grounded in the numbers given.
+- wins: 1-3 short wins from the data (days logged, sessions done, protein, weight moving the right way).
+- watch: 1-3 short things to keep an eye on.
+- tweaks: 0-4 small adjustments. kind must be one of: kcal (suggest MUST be one of tweakOptions.kcal), protein (one of tweakOptions.protein), rate (one of tweakOptions.rate), program ("strength"|"muscle"|"lean"), or none.
+  Each tweak needs a short "why". Only include a tweak when the data justifies it — an empty tweaks list is fine and better than noise.
+- suggest is a string, e.g. "2700" for kcal, "180" for protein, "0.5" for rate, "lean" for program.
+- Australian English, "you" voice, warm but efficient. No medical claims.`;
+
+function sanitizeWeekly(p, payload) {
+  const opt = (payload && payload.tweakOptions) || {};
+  const allowedKcal = (opt.kcal || []).map(Number);
+  const allowedProtein = (opt.protein || []).map(Number);
+  const allowedRate = (opt.rate || []).map(Number);
+  const tweaks = (Array.isArray(p.tweaks) ? p.tweaks : [])
+    .map((t) => {
+      const kind = ['kcal', 'protein', 'rate', 'program'].includes(t.kind) ? t.kind : null;
+      if (!kind) return null;
+      const why = clamp(t.why, 220);
+      if (kind === 'kcal') { const v = Math.round(Number(t.suggest)); return allowedKcal.includes(v) ? { kind, suggest: v, why } : null; }
+      if (kind === 'protein') { const v = Math.round(Number(t.suggest)); return allowedProtein.includes(v) ? { kind, suggest: v, why } : null; }
+      if (kind === 'rate') { const v = Number(t.suggest); return allowedRate.includes(v) ? { kind, suggest: v, why } : null; }
+      const v = String(t.suggest || '').trim();
+      return ['strength', 'muscle', 'lean'].includes(v) ? { kind, suggest: v, why } : null;
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+  const strArr = (a, n, len) => (Array.isArray(a) ? a : []).map((s) => clamp(s, len)).filter(Boolean).slice(0, n);
+  return {
+    headline: clamp(p.headline, 120),
+    summary: clamp(p.summary, 600),
+    wins: strArr(p.wins, 3, 120),
+    watch: strArr(p.watch, 3, 140),
+    tweaks,
+  };
+}
+
+async function callModel(schema, promptText, apiKey) {
+  const body = {
+    contents: [{ parts: [{ text: promptText }] }],
+    generationConfig: { temperature: 0.4, responseMimeType: 'application/json', responseSchema: schema, maxOutputTokens: 2600 },
+  };
+  let lastErr = '';
+  for (const model of MODEL_CANDIDATES) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) { lastErr += `[${model}] ${r.status} ${(await r.text()).replace(/\s+/g, ' ').slice(0, 160)} | `; continue; }
+    const j = await r.json();
+    const text = j?.candidates?.[0]?.content?.parts?.map((p2) => p2.text || '').join('') || '';
+    try { return JSON.parse(text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '')); }
+    catch { lastErr += `[${model}] bad_json(len=${text.length}): ${text.slice(0, 120).replace(/\s+/g, ' ')} | `; continue; }
+  }
+  const err = new Error('weekly_failed');
+  err.detail = lastErr;
+  throw err;
+}
+
+export async function weeklyReview(payload, apiKey) {
+  const parsed = await callModel(WEEKLY_SCHEMA, `You are FUEL's coach running this week's check-in.\nHere is the user's data as JSON:\n${JSON.stringify(payload)}\n\n${WEEKLY_RULES}`, apiKey);
+  return sanitizeWeekly(parsed, payload);
+}

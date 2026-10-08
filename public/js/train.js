@@ -171,7 +171,9 @@ function logSet(ei, si) {
   if (!(w > 0) || !(r > 0)) { flashRow(row); return; }
   const ex = s.ex[ei], st = ex.sets[si];
   st.w = w; st.r = r; st.done = true; st.ts = Date.now();
-  ensureAudio(); vib(12);
+  const prHit = S.checkPR(ex.name, K(), w, r);
+  if (prHit) toastT(`PR! ${ex.name} — ${w} kg × ${r}`);
+  ensureAudio(); vib(prHit ? [40, 60, 40] : 12);
   const next = nextIncomplete(s, ei, si);
   if (next) {
     const sameEx = next.ei === ei;
@@ -185,7 +187,7 @@ function logSet(ei, si) {
     };
   } else {
     s.timer = null;
-    setTimeout(() => toastT('All sets done — hit Finish workout 🎉'), 350);
+    setTimeout(() => toastT('All sets done — hit Finish workout 🎉'), 2000);
   }
   S.putSession(K(), s);
   renderTrain(); startTicker(); onTick();
@@ -349,8 +351,8 @@ function exSeries(name, finAsc) {
 function progressHTML(p) {
   const fin = finishedSessions();
   const asc = fin.slice().reverse();
-  const TAB_META = { volume: 'Volume', strength: 'Strength', weight: 'Weight' };
-  const tabs = ['volume', 'strength', 'weight']
+  const TAB_META = { volume: 'Volume', strength: 'Strength', weight: 'Weight', bests: 'Bests' };
+  const tabs = ['volume', 'strength', 'weight', 'bests']
     .map((id) => `<button class="chip${ui.progTab === id ? ' sel' : ''}" data-tab="${id}" type="button">${TAB_META[id]}</button>`)
     .join('');
 
@@ -388,6 +390,12 @@ function progressHTML(p) {
         <div class="panel chart-panel"><canvas id="prog-strength" class="prog-canvas" height="150"></canvas>
         <div class="chart-legend"><span class="muted" id="prog-ex-name">${esc(sel)} · heaviest set each session</span><span class="muted">${pts.length} session${pts.length === 1 ? '' : 's'}</span></div></div>`;
     }
+  } else if (ui.progTab === 'bests') {
+    const rows = bestsRows();
+    body = rows
+      ? `<div class="panel"><h2 class="ph2">Personal bests</h2>${rows}</div>
+        <p class="muted sm" style="padding:2px 6px 0">Best set per lift from your logged workouts — ✦ = set in the last 14 days. Tap one for its trend.</p>`
+      : `<div class="panel"><div class="empty-state">Log some sets and your bests land here.</div></div>`;
   } else {
     const series = S.weightSeries();
     const latest = series.length ? series[series.length - 1] : null;
@@ -407,6 +415,30 @@ function progressHTML(p) {
     ${body}`;
 }
 
+function bestsRows() {
+  const fin = finishedSessions();
+  const agg = {};
+  for (const h of fin) for (const ex of h.ex || []) {
+    for (const st of ex.sets || []) {
+      if (!st.done || !st.w || !st.r) continue;
+      const e1 = st.w * (1 + st.r / 30);
+      const cur = agg[ex.name] || (agg[ex.name] = { name: ex.name, best: null, last: h.key });
+      if (h.key > cur.last) cur.last = h.key;
+      if (!cur.best || e1 > cur.best.e1) cur.best = { w: st.w, r: st.r, e1, key: h.key };
+    }
+  }
+  const recent = S.dayKey(new Date(Date.now() - 14 * 864e5));
+  return Object.values(agg)
+    .sort((a, b) => (a.last < b.last ? 1 : -1))
+    .map((x) => `<button class="favrow" data-fav-open="${esc(x.name)}" type="button">
+      <span class="fav-name">${esc(x.name)}</span>${x.best.key >= recent ? '<span class="pr-badge">✦</span>' : ''}
+      <span class="fav-w">${fmtN(x.best.w, 1)} × ${x.best.r}</span>
+      <span class="fav-when muted">${esc(S.fmtDate(x.best.key))}</span>
+      <svg class="hrow-chev"><use href="#i-chev"/></svg>
+    </button>`)
+    .join('');
+}
+
 function drawProgress() {
   const fin = finishedSessions();
   const asc = fin.slice().reverse();
@@ -422,7 +454,7 @@ function drawProgress() {
     const names = exNamesNewestFirst(fin);
     const sel = ui.progEx || names[0] || null;
     CH.line(c, { data: sel ? exSeries(sel, asc) : [], cssH: 150, unit: 'kg', minPad: 5 });
-  } else {
+  } else if (ui.progTab === 'weight') {
     const c = document.getElementById('prog-weight');
     if (!c) return;
     CH.line(c, { data: S.weightSeries().slice(-60).map((w) => ({ label: shortDate(w.key), value: w.kg })), cssH: 150, unit: 'kg', minPad: 0.5 });

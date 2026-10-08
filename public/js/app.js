@@ -19,6 +19,7 @@ const MEAL_META = {
 /* ══════════ init ══════════ */
 let selDate = S.dayKey(); // the day being viewed/edited (day navigation)
 let histMetric = 'kcal'; // history chart metric: kcal | protein
+let quickCache = []; // quick-add chips resolve their food via this (frequent + fits)
 const isToday = () => selDate === S.dayKey();
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
@@ -47,6 +48,7 @@ $$('.tab').forEach((t) => t.addEventListener('click', () => switchView(t.dataset
 
 /* ── goals & AI coach ── */
 let coachBusy = false;
+let weeklyBusy = false;
 let goalsFrom = 'settings';
 
 $('#btn-open-goals').addEventListener('click', () => { goalsFrom = 'settings'; switchView('goals'); });
@@ -63,6 +65,9 @@ $('#goals-body').addEventListener('click', (e) => {
   if (t.closest('#btn-ask-coach')) { if (!coachBusy) askCoach(); return; }
   if (t.closest('#btn-apply-targets')) { applyCoachPlan(); return; }
   if (t.closest('#btn-apply-program')) { applyCoachProgram(); return; }
+  if (t.closest('#btn-run-weekly') || t.closest('#btn-ask-weekly')) { if (!weeklyBusy) runWeekly(false); return; }
+  const wt = t.closest('[data-wtweak]');
+  if (wt) { applyWeeklyTweak(+wt.dataset.wtweak); return; }
 });
 
 $('#goals-body').addEventListener('change', (e) => {
@@ -74,6 +79,8 @@ $('#goals-body').addEventListener('change', (e) => {
   else return;
   renderGoals();
 });
+
+maybeWeeklyCheckin();
 
 /* ══════════ day navigation ══════════ */
 const DAY_MS = 864e5;
@@ -159,7 +166,7 @@ function switchView(v) {
   $$('.view').forEach((s) => s.classList.toggle('active', s.id === 'view-' + v));
   $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
   vib(6);
-  if (v === 'history') renderHistory();
+  if (v === 'history') { renderHistory(); renderConsistency(); }
   if (v === 'today') renderWeek();
   if (v === 'goals') renderGoals();
 }
@@ -232,11 +239,13 @@ function renderToday() {
         <div class="meal-ico"><svg><use href="#${meta.icon}"/></svg></div>
         <div class="meal-info"><div class="meal-name">${meta.label}</div><div class="meal-sub">${items.length ? `${items.length} item${items.length > 1 ? 's' : ''} · ${fmt(mk)} kcal` : 'Nothing logged'}</div></div>
         <div class="meal-kcal">${mk ? fmt(mk) : ''}</div>
+        ${items.length ? `<button class="meal-save" data-savecl="${m}" type="button" aria-label="Save as usual"><svg><use href="#i-bookmark"/></svg></button>` : ''}
         <button class="meal-add" data-add-meal="${m}" type="button"><svg><use href="#i-plus"/></svg></button>
       </div>
       ${items.length ? `<div class="meal-items">${rows}</div>` : ''}
     </div>`;
   }).join('');
+  renderQuick();
   renderWeek();
 }
 
@@ -249,8 +258,139 @@ $('#meals').addEventListener('click', (e) => {
     renderToday();
     return;
   }
+  const savecl = e.target.closest('[data-savecl]');
+  if (savecl) { saveUsualModal(savecl.dataset.savecl); return; }
   const add = e.target.closest('[data-add-meal]');
   if (add) { state.prefMeal = add.dataset.addMeal; openAddSheet(); }
+});
+
+/* ══════════ quick add (usuals · frequent · fits-what's-left) ══════════ */
+function renderQuick() {
+  const panel = $('#quick-panel');
+  if (!panel) return;
+  const st = S.getState();
+  const t = S.dayTotals(selDate);
+  const left = st.goals.kcal - t.kcal;
+  const leftP = st.goals.protein - t.p;
+  $('#quick-sub').textContent = isToday() ? '' : `logging to ${S.fmtDate(selDate)}`;
+
+  const us = S.usuals();
+  $('#quick-usuals').innerHTML = us.length
+    ? `<div class="q-label muted sm">Your usuals</div><div class="chip-row wrap" id="quick-usual-chips">${us
+        .map((u) => `<span class="qchip usual" data-uid="${u.id}" role="button" tabindex="0"><b>${esc(u.name)}</b><i>${fmt(u.kcal)} kcal</i><span class="qdel" data-delusual="${u.id}" aria-label="Delete usual">✕</span></span>`)
+        .join('')}</div>`
+    : `<p class="hint muted" style="margin:0 0 10px">Save any meal as a “usual” (bookmark button on the meal card) → one-tap re-log next time.</p>`;
+
+  const freq = S.frequentFoods(6);
+  quickCache = freq;
+  $('#q-freq-label').hidden = !freq.length;
+  $('#quick-freq').innerHTML = freq
+    .map((f, i) => `<button class="qchip" data-qi="${i}" type="button"><b>${esc(f.name)}</b><i>${fmt(f.kcal)} kcal${f.p >= 15 ? ` · ${Math.round(f.p)}g P` : ''}</i></button>`)
+    .join('');
+
+  const fit = freq.filter((f) => f.kcal && f.kcal <= Math.max(left, 0) + 40).sort((a, b) => (b.p || 0) - (a.p || 0)).slice(0, 3);
+  const fitLabel = $('#q-fit-label');
+  if (left <= 80) {
+    fitLabel.hidden = false;
+    fitLabel.textContent = 'Right at your goal for this day — nice 👍';
+    $('#quick-fit').innerHTML = '';
+  } else if (fit.length) {
+    fitLabel.hidden = false;
+    fitLabel.textContent = leftP > 30 ? `Fits what's left — ~${fmt(left)} kcal · ${Math.round(leftP)}g protein to go` : `Fits what's left — ~${fmt(left)} kcal to go`;
+    $('#quick-fit').innerHTML = fit
+      .map((f) => {
+        quickCache.push(f);
+        return `<button class="qchip fit" data-qi="${quickCache.length - 1}" type="button"><b>${esc(f.name)}${f.qtyLabel ? ` <i>${esc(f.qtyLabel)}</i>` : ''}</b><i>${fmt(f.kcal)} kcal · ${Math.round(f.p)}g P</i></button>`;
+      })
+      .join('');
+  } else {
+    fitLabel.hidden = true;
+    $('#quick-fit').innerHTML = '';
+  }
+}
+
+$('#quick-panel').addEventListener('click', (e) => {
+  const del = e.target.closest('[data-delusual]');
+  if (del) { S.removeUsual(del.dataset.delusual); renderQuick(); toast('Usual removed'); return; }
+  const uid = e.target.closest('[data-uid]');
+  if (uid) {
+    const u = S.logUsual(uid.dataset.uid, selDate);
+    if (u) { vib(10); renderToday(); toast(`${u.name} added — ${fmt(u.kcal)} kcal${isToday() ? '' : ' · ' + S.fmtDate(selDate)}`); }
+    return;
+  }
+  const qi = e.target.closest('[data-qi]');
+  if (qi) {
+    const f = quickCache[+qi.dataset.qi];
+    if (f) {
+      S.addEntry(mealForNow(), { name: f.name, kcal: f.kcal, p: f.p, c: f.c, f: f.f, qtyLabel: f.qtyLabel || '' }, selDate);
+      vib(10);
+      renderToday();
+      toast(`${f.name} added${isToday() ? '' : ' · ' + S.fmtDate(selDate)}`);
+    }
+  }
+});
+
+function saveUsualModal(meal) {
+  const logv = S.dayLog(selDate);
+  const items = logv.meals[meal];
+  if (!items.length) return;
+  const mk = items.reduce((a, e) => a + (e.kcal || 0), 0);
+  const label = MEAL_META[meal].label;
+  const { wrap, close } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">Save as usual</div>
+    </div>
+    <div class="field"><span>Name it</span>
+      <input id="usual-name" type="text" maxlength="40" value="My ${label.toLowerCase()}" /></div>
+    <div class="usual-preview">${items.map((e) => `<div class="wt-row"><span>${esc(e.name)}</span><b>${fmt(e.kcal)} kcal</b></div>`).join('')}<div class="wt-row total"><span>Total</span><b>${fmt(mk)} kcal</b></div></div>
+    <p class="nutri-note">One tap on Today re-logs all of it. Saving the same name again updates it.</p>
+    <button class="btn primary" data-save-usual type="button">Save usual</button>
+  `);
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { close(); return; }
+    if (e.target.closest('[data-save-usual]')) {
+      const name = ($('#usual-name', wrap).value || '').trim() || `My ${label.toLowerCase()}`;
+      S.saveUsual(name, meal, items);
+      close();
+      renderToday();
+      vib(12);
+      toast(`Saved “${name}” — one-tap it from Quick add`);
+    }
+  });
+}
+
+/* ══════════ consistency heatmap ══════════ */
+function renderConsistency() {
+  const grid = $('#heat-grid');
+  if (!grid) return;
+  const goal = S.getState().goals.kcal;
+  const todayK = S.dayKey();
+  const dow = (new Date().getDay() + 6) % 7; // Mon = 0
+  const monday = new Date(Date.now() - dow * 864e5);
+  monday.setHours(0, 0, 0, 0);
+  const start = monday.getTime() - 13 * 7 * 864e5;
+  const cells = [];
+  for (let i = 0; i < 98; i++) {
+    const d = new Date(start + i * 864e5);
+    const k = S.dayKey(d);
+    if (k > todayK) { cells.push('<i class="hc empty"></i>'); continue; }
+    const t = S.dayTotals(k);
+    let style = '';
+    if (t.kcal > 0) {
+      const ratio = t.kcal / goal;
+      const alpha = Math.min(1, Math.max(0.25, ratio)).toFixed(2);
+      style = ` style="background:${ratio > 1.03 ? 'rgba(255,93,108,' : 'rgba(255,161,23,'}${alpha})"`;
+    }
+    cells.push(`<span class="hc${k === todayK ? ' today' : ''}" data-day="${k}"${style}></span>`);
+  }
+  grid.innerHTML = cells.join('');
+  const streak = S.streak();
+  $('#streak-line').textContent = streak >= 2 ? `🔥 ${streak}-day streak` : '';
+}
+$('#heat-grid').addEventListener('click', (e) => {
+  const c = e.target.closest('[data-day]');
+  if (c) navigateToDay(c.dataset.day);
 });
 
 /* count-up micro-animation */
@@ -939,6 +1079,7 @@ function renderGoals() {
     </div>
 
     ${planHTML}
+    ${weeklyHTML()}
   `;
 }
 
@@ -1023,6 +1164,117 @@ function applyCoachProgram() {
   toast(`Program switched — ${PROGRAM_NAMES[pid] || pid}`);
   renderGoals();
   vib(12);
+}
+
+/* ══════════ weekly check-in ══════════ */
+const TW_LABEL = { kcal: 'Calories', protein: 'Protein', rate: 'Pace', program: 'Program' };
+
+function weeklyHTML() {
+  const w = S.getSetting('weeklyReview');
+  const err = S.getSetting('weeklyError');
+  if (weeklyBusy) return `<div class="panel"><div class="loading-row">Your coach is reviewing the week…</div></div>`;
+  if (!w) {
+    return `<div class="panel coach-cta">
+      ${err ? `<p class="coach-err">${esc(err)}</p>` : ''}
+      <h2 class="ph2">Weekly check-in</h2>
+      <p class="hint muted">Runs by itself once a week — it reviews your weight trend, eating and training, then suggests small tweaks (nothing changes without your tap).</p>
+      <button class="btn ghost" id="btn-run-weekly" type="button">Run this week's check-in</button>
+    </div>`;
+  }
+  const r = w.result || {};
+  const tweaks = (r.tweaks || [])
+    .map((t, i) => `<div class="tw-row"><div><b>${TW_LABEL[t.kind] || t.kind}</b>${t.suggest !== '' && t.suggest != null ? ` → <span class="tw-val">${typeof t.suggest === 'number' ? fmt(t.suggest) : esc(String(t.suggest))}</span>` : ''}<div class="muted sm">${esc(t.why || '')}</div></div><button class="btn ghost sm-btn" data-wtweak="${i}" type="button">Apply</button></div>`)
+    .join('');
+  return `<div class="panel plan-panel">
+    <div class="plan-head"><svg class="plan-spark"><use href="#i-spark"/></svg><h2 class="ph2">This week's check-in</h2></div>
+    ${r.headline ? `<p class="plan-sum">${esc(r.headline)}</p>` : ''}
+    ${r.summary ? `<p class="plan-why muted">${esc(r.summary)}</p>` : ''}
+    ${(r.wins || []).length ? `<ul class="plan-tips wins">${r.wins.map((x) => `<li>✓ ${esc(x)}</li>`).join('')}</ul>` : ''}
+    ${(r.watch || []).length ? `<ul class="plan-tips watch">${r.watch.map((x) => `<li>→ ${esc(x)}</li>`).join('')}</ul>` : ''}
+    ${tweaks ? `<div class="tw-list">${tweaks}</div>` : ''}
+    <div class="plan-foot"><span class="muted sm">Reviewed ${new Date(w.ts).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+      <button class="link-btn" id="btn-ask-weekly" type="button">Run again</button></div>
+  </div>`;
+}
+
+function weeklyPayload() {
+  const base = coachPayload();
+  const g = S.getState().goals;
+  const d7 = S.recentDays(7).filter((d) => d.any);
+  const prev7 = [];
+  for (let i = 7; i < 14; i++) {
+    const k = S.dayKey(new Date(Date.now() - i * 864e5));
+    const logv = S.getState().logs[k];
+    if (logv && S.MEALS.some((m) => (logv.meals?.[m] || []).length)) prev7.push(S.dayTotals(k));
+  }
+  const avgOf = (arr, f) => (arr.length ? Math.round(arr.reduce((a, t) => a + f(t), 0) / arr.length) : 0);
+  return {
+    ...base,
+    week: {
+      logged: d7.length, avgKcal: avgOf(d7, (t) => t.kcal), avgProtein: avgOf(d7, (t) => t.p),
+      prevLogged: prev7.length, prevAvgKcal: avgOf(prev7, (t) => t.kcal), prevAvgProtein: avgOf(prev7, (t) => t.p),
+    },
+    tweakOptions: { kcal: [g.kcal - 150, g.kcal, g.kcal + 150], protein: [Math.max(60, g.protein - 20), g.protein, g.protein + 20], rate: [0.25, 0.5, 0.75] },
+  };
+}
+
+async function runWeekly(silent) {
+  weeklyBusy = true;
+  if (!silent) renderGoals();
+  try {
+    const r = await fetch('/api/weekly', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: weeklyPayload() }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.message || 'The check-in is unavailable right now — try again in a minute.');
+    S.setSetting('weeklyError', null);
+    S.setSetting('weeklyReview', { ts: Date.now(), result: j.result });
+    if (!silent) toast('Weekly check-in ready');
+  } catch (e) {
+    S.setSetting('weeklyError', String(e.message || e).slice(0, 200));
+    if (!silent) toast('Check-in unavailable right now', 'i-x');
+  }
+  weeklyBusy = false;
+  if (!silent) renderGoals();
+}
+
+function applyWeeklyTweak(i) {
+  const w = S.getSetting('weeklyReview');
+  const tw = w?.result?.tweaks?.[i];
+  if (!tw) return;
+  const g = S.getState().goals;
+  if (tw.kind === 'kcal') {
+    const kcal = +tw.suggest;
+    const fat = Math.round((kcal * 0.25) / 9);
+    const carbs = Math.max(0, Math.round((kcal - g.protein * 4 - fat * 9) / 4));
+    S.setGoals({ kcal, fat, carbs });
+    toast(`Calories → ${fmt(kcal)} kcal`);
+  } else if (tw.kind === 'protein') {
+    const protein = +tw.suggest;
+    const carbs = Math.max(0, Math.round((g.kcal - protein * 4 - g.fat * 9) / 4));
+    S.setGoals({ protein, carbs });
+    toast(`Protein → ${protein} g`);
+  } else if (tw.kind === 'rate') {
+    S.setProfile({ rate: +tw.suggest });
+    toast(`Pace → ${tw.suggest} kg/week`);
+  } else if (tw.kind === 'program') {
+    S.setSetting('programId', tw.suggest);
+    window.dispatchEvent(new Event('fuel:refresh-train'));
+    toast(`Program → ${PROGRAM_NAMES[tw.suggest] || tw.suggest}`);
+  }
+  w.result.tweaks.splice(i, 1); // consume it — no double-applying
+  S.setSetting('weeklyReview', w);
+  renderToday();
+  renderGoals();
+  vib(12);
+}
+
+async function maybeWeeklyCheckin() {
+  try {
+    if (new URLSearchParams(location.search).get('demo') === '1') return; // QA runs it by hand
+    const last = S.getSetting('weeklyReview');
+    if (last && Date.now() - last.ts < 6 * 864e5) return;
+    if (S.recentDays(7).filter((d) => d.any).length < 3) return;
+    await runWeekly(true);
+  } catch {}
 }
 
 /* ══════════ settings ══════════ */

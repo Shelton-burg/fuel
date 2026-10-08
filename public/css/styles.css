@@ -615,11 +615,43 @@ svg.sm { width:14px; height:14px; }
 .ex-head-r { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
 .favrow { display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; border-bottom:1px solid var(--line); padding:11px 2px; text-align:left; color:var(--text); }
 .favrow:last-of-type { border-bottom:0; }
-.favrow .fav-name { font-size:14.5px; font-weight:600; flex:1 1 auto; }
-.favrow .fav-w { font-family:var(--font-num); font-weight:700; font-size:14.5px; font-variant-numeric:tabular-nums; }
-.favrow .fav-when { font-size:11.5px; flex:0 0 auto; }
+.favrow .fav-name { font-size:14.5px; font-weight:600; flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.favrow .fav-w { font-family:var(--font-num); font-weight:700; font-size:14.5px; font-variant-numeric:tabular-nums; white-space:nowrap; flex:0 0 auto; }
+.favrow .pr-badge { flex:0 0 auto; }
+.favrow .fav-when { font-size:11.5px; flex:0 0 auto; white-space:nowrap; }
 .favrow .hrow-chev { width:14px; height:14px; }
 .fav-empty { padding:6px 2px 2px; line-height:1.55; }
+/* ── quick add ── */
+.quick-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+.quick-head .ph2 { margin:0; }
+.q-label { margin:4px 0 6px; }
+.chip-row.wrap { margin-bottom:2px; }
+.qchip { display:inline-flex; flex-direction:column; align-items:flex-start; gap:1px; background:var(--panel-2); border:1px solid var(--line); border-radius:14px; padding:8px 12px; margin:0 8px 8px 0; position:relative; color:var(--text); }
+.qchip b { font-size:13px; font-weight:600; }
+.qchip i { font-style:normal; font-size:11px; color:var(--muted); }
+.qchip.fit { border-color:rgba(255,161,23,.4); }
+.qchip.usual { border-color:rgba(255,161,23,.25); }
+.qchip.usual b { padding-right:14px; }
+.qchip .qdel { position:absolute; top:-6px; right:-6px; width:18px; height:18px; border-radius:999px; background:var(--panel); border:1px solid var(--line-2); color:var(--muted); font-size:10px; display:flex; align-items:center; justify-content:center; }
+.meal-save { width:32px; height:32px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:var(--muted); background:var(--panel-2); border:1px solid var(--line); margin-right:8px; flex:0 0 auto; }
+.meal-save svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:1.6; }
+.usual-preview { margin-bottom:12px; }
+.wt-row.total { font-weight:700; border-bottom:0; }
+/* ── consistency heatmap ── */
+.heat-head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+.heat-head .ph2 { margin:0; }
+.heat-grid { display:grid; grid-template-columns:repeat(14, 1fr); grid-template-rows:repeat(7, 18px); gap:3px; }
+.hc { border-radius:4px; background:rgba(255,255,255,.05); }
+.hc.empty { background:transparent; }
+.hc.today { box-shadow:inset 0 0 0 1.5px var(--amber); }
+.heat-cap { margin-top:8px; }
+/* ── PRs + weekly check-in ── */
+.pr-badge { display:inline-block; font-size:10px; color:var(--amber); background:var(--amber-soft); border:1px solid rgba(255,161,23,.35); border-radius:999px; padding:1px 6px; margin-left:6px; vertical-align:middle; }
+.tw-list { margin-top:12px; }
+.tw-row { display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--panel-2); border:1px solid var(--line); border-radius:14px; padding:10px 12px; margin-bottom:8px; font-size:13px; }
+.tw-val { color:var(--amber); font-weight:700; }
+.plan-tips.wins li { color:var(--good); }
+.plan-tips.watch li { color:var(--amber); }
 
 /* ── progress charts ─────────────────────────────────────── */
 button.stat-chip:active { transform:scale(.96); }

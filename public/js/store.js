@@ -203,6 +203,73 @@ export function weightSeries() {
     .sort((a, b) => (a[0] < b[0] ? -1 : 1))
     .map(([key, kg]) => ({ key, kg }));
 }
+/* ── quick log: frequent foods + saved meal "usuals" ── */
+export function frequentFoods(n = 6) {
+  const agg = {};
+  for (const logv of Object.values(state.logs || {})) {
+    for (const m of MEALS) {
+      for (const e of (logv.meals?.[m] || [])) {
+        const k = String(e.name || '').toLowerCase().trim();
+        if (!k || !e.kcal) continue;
+        const a = agg[k] || (agg[k] = { name: e.name, qtyLabel: e.qtyLabel || '', kcal: e.kcal, p: e.p || 0, c: e.c || 0, f: e.f || 0, count: 0, ts: 0 });
+        a.count++;
+        if ((e.ts || 0) >= a.ts) { a.ts = e.ts || 0; a.name = e.name; a.qtyLabel = e.qtyLabel || ''; a.kcal = e.kcal; a.p = e.p || 0; a.c = e.c || 0; a.f = e.f || 0; }
+      }
+    }
+  }
+  return Object.values(agg).sort((a, b) => b.count - a.count || b.ts - a.ts).slice(0, n);
+}
+export function usuals() { return (state.settings || {}).usuals || []; }
+export function saveUsual(name, meal, items) {
+  state.settings = state.settings || {};
+  const sum = (f) => Math.round(items.reduce((a, e) => a + (e[f] || 0), 0));
+  const u = {
+    id: 'u' + Date.now().toString(36),
+    name: String(name || 'Usual meal').slice(0, 40),
+    meal,
+    items: items.map((e) => ({ name: e.name, kcal: e.kcal || 0, p: e.p || 0, c: e.c || 0, f: e.f || 0, qtyLabel: e.qtyLabel || '' })),
+    kcal: sum('kcal'), p: sum('p'), c: sum('c'), f: sum('f'),
+    ts: Date.now(), uses: 0,
+  };
+  const list = state.settings.usuals || [];
+  const dupe = list.findIndex((x) => x.name === u.name && x.meal === meal);
+  if (dupe >= 0) list[dupe] = { ...u, id: list[dupe].id, uses: list[dupe].uses || 0 };
+  else list.unshift(u);
+  state.settings.usuals = list.slice(0, 20);
+  save();
+  return u;
+}
+export function removeUsual(id) {
+  state.settings = state.settings || {};
+  state.settings.usuals = (state.settings.usuals || []).filter((u) => u.id !== id);
+  save();
+}
+export function logUsual(id, key) {
+  const u = (state.settings?.usuals || []).find((x) => x.id === id);
+  if (!u) return null;
+  for (const it of u.items) addEntry(u.meal, { ...it }, key);
+  u.uses = (u.uses || 0) + 1;
+  u.ts = Date.now();
+  save();
+  return u;
+}
+/* ── personal bests (e1RM, Epley) ── */
+export function bestE1RM(name, excludeKey) {
+  let best = 0;
+  for (const [k, s] of Object.entries(state.workouts || {})) {
+    if (k === excludeKey || !s?.ex) continue;
+    const ex = s.ex.find((e) => e.name === name);
+    if (!ex) continue;
+    for (const st of (ex.sets || [])) if (st.done && st.w && st.r) best = Math.max(best, st.w * (1 + st.r / 30));
+  }
+  return best;
+}
+export function checkPR(name, excludeKey, w, r) {
+  if (!name || !w || !r) return null;
+  const e1 = w * (1 + r / 30);
+  const prev = bestE1RM(name, excludeKey);
+  return prev > 0 && e1 > prev + 0.01 ? { prev: Math.round(prev * 10) / 10 } : null;
+}
 /* ── favourite exercises ── */
 export function favExercises() { return (state.settings || {}).favs || []; }
 export function isFavEx(name) { return favExercises().includes(name); }

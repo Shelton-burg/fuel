@@ -1,5 +1,5 @@
 // FUEL service worker — shell cache-first, API network-only.
-const CACHE = 'fuel-v6';
+const CACHE = 'fuel-v7';
 const SHELL = ['./', 'index.html', 'css/styles.css', 'js/app.js', 'js/store.js', 'js/off.js', 'js/charts.js', 'js/programs.js', 'js/train.js', 'manifest.webmanifest', 'icons/icon.svg'];
 
 self.addEventListener('install', (e) => {
