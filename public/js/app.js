@@ -16,6 +16,9 @@ const MEAL_META = {
 };
 
 /* ══════════ init ══════════ */
+let selDate = S.dayKey(); // the day being viewed/edited (day navigation)
+const isToday = () => selDate === S.dayKey();
+
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
@@ -23,8 +26,93 @@ if (new URLSearchParams(location.search).get('demo') === '1') seedDemo();
 
 renderAll();
 $('#btn-fab').addEventListener('click', openAddSheet);
-$('#btn-date').addEventListener('click', () => toast('Day navigation — next version'));
+$('#btn-date').addEventListener('click', openDaySheet);
+$('#daynav-pill').addEventListener('click', () => setDay(S.dayKey()));
+$('#history-list').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-day]');
+  if (row) navigateToDay(row.dataset.day);
+});
 $$('.tab').forEach((t) => t.addEventListener('click', () => switchView(t.dataset.view)));
+
+/* ══════════ day navigation ══════════ */
+const DAY_MS = 864e5;
+
+function setDay(key, opts = {}) {
+  const today = S.dayKey();
+  if (key > today) key = today; // ISO keys compare lexically — never navigate past today
+  selDate = key;
+  renderToday();
+  if (!opts.silent) vib(6);
+}
+
+function navigateToDay(key) {
+  setDay(key, { silent: true });
+  switchView('today');
+}
+
+function shiftKey(key, delta) {
+  const [y, m, d] = key.split('-').map(Number);
+  return S.dayKey(new Date(y, m - 1, d + delta));
+}
+
+function openDaySheet() {
+  const today = S.dayKey();
+  const yest = S.dayKey(new Date(Date.now() - DAY_MS));
+  const week = [];
+  for (let i = 0; i < 7; i++) week.push(S.dayKey(new Date(Date.now() - i * DAY_MS)));
+
+  const strip = week
+    .map((k) => {
+      const [y, m, d] = k.split('-').map(Number);
+      const wd = new Date(y, m - 1, d).toLocaleDateString('en-AU', { weekday: 'short' });
+      const any = S.MEALS.some((mm) => (S.getState().logs[k]?.meals?.[mm] || []).length);
+      return `<button class="daycell${k === selDate ? ' sel' : ''}" data-day="${k}" type="button" aria-label="${S.fmtDate(k)}">
+        <span class="dc-wd">${wd}</span><span class="dc-d">${d}</span>${any ? '<span class="dc-dot"></span>' : ''}
+      </button>`;
+    })
+    .join('');
+
+  const { wrap, close } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">Jump to a day</div>
+    </div>
+    <div class="daynav-row">
+      <button class="daynav-arrow" data-prev type="button" aria-label="Previous day"><svg class="flip"><use href="#i-chev"/></svg></button>
+      <div class="daynav-label" id="dn-label">${S.fmtDate(selDate)}</div>
+      <button class="daynav-arrow" data-next type="button" aria-label="Next day" ${selDate >= today ? 'disabled' : ''}><svg><use href="#i-chev"/></svg></button>
+    </div>
+    <div class="day-strip">${strip}</div>
+    <div class="daynav-quick">
+      <button class="qty-preset${selDate === today ? ' sel' : ''}" data-today type="button">Today</button>
+      <button class="qty-preset${selDate === yest ? ' sel' : ''}" data-yest type="button">Yesterday</button>
+    </div>
+    <label class="field"><span>Or pick a date</span><input id="dn-input" type="date" max="${today}" value="${selDate}"></label>
+    <p class="nutri-note">Log or fix anything for that day — the ring and totals follow along.</p>
+  `);
+
+  const sync = (cur) => {
+    $('#dn-label', wrap).textContent = S.fmtDate(cur);
+    $$('[data-day]', wrap).forEach((b) => b.classList.toggle('sel', b.dataset.day === cur));
+    $('[data-next]', wrap).disabled = cur >= today;
+    $('#dn-input', wrap).value = cur;
+    $('[data-today]', wrap).classList.toggle('sel', cur === today);
+    $('[data-yest]', wrap).classList.toggle('sel', cur === yest);
+  };
+
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { close(); return; }
+    if (e.target.closest('[data-prev]')) { setDay(shiftKey(selDate, -1), { silent: true }); sync(selDate); vib(5); return; }
+    if (e.target.closest('[data-next]')) { if (selDate < today) { setDay(shiftKey(selDate, 1), { silent: true }); sync(selDate); vib(5); } return; }
+    const cell = e.target.closest('[data-day]');
+    if (cell) { setDay(cell.dataset.day); close(); return; }
+    if (e.target.closest('[data-today]')) { setDay(today); close(); return; }
+    if (e.target.closest('[data-yest]')) { setDay(yest); close(); return; }
+  });
+  $('#dn-input', wrap).addEventListener('change', (e) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) { setDay(e.target.value); close(); }
+  });
+}
 
 function switchView(v) {
   $$('.view').forEach((s) => s.classList.toggle('active', s.id === 'view-' + v));
@@ -48,9 +136,15 @@ function mealForNow() {
 }
 
 function renderToday() {
-  const t = S.dayTotals();
+  const t = S.dayTotals(selDate);
   const g = S.getState().goals;
   const left = g.kcal - t.kcal;
+
+  // day chip + past-day banner
+  $('#topbar-date').textContent = S.fmtDate(selDate);
+  $('#btn-date').classList.toggle('past', !isToday());
+  $('#daynav-pill').hidden = isToday();
+  $('#dayview-date').textContent = S.fmtDate(selDate);
 
   countUp($('#kcal-left'), left);
   $('#kcal-eaten').textContent = fmt(t.kcal);
@@ -75,7 +169,7 @@ function renderToday() {
   $('#streak-val').textContent = `${st} day${st === 1 ? '' : 's'} streak`;
   $('#weight-val').textContent = `${S.getState().profile.weight} kg`;
 
-  const log = S.dayLog();
+  const log = S.dayLog(selDate);
   const mealsEl = $('#meals');
   mealsEl.innerHTML = S.MEALS.map((m) => {
     const meta = MEAL_META[m];
@@ -106,7 +200,7 @@ $('#meals').addEventListener('click', (e) => {
   const del = e.target.closest('[data-del]');
   if (del) {
     const row = del.closest('.mi');
-    S.removeEntry(row.dataset.meal, row.dataset.id);
+    S.removeEntry(row.dataset.meal, row.dataset.id, selDate);
     vib(10);
     renderToday();
     return;
@@ -255,11 +349,11 @@ export function portionModal(food, editFood = null) {
         src: food.source || 'manual',
       };
       S.saveFood({ ...food, id: food.id });
-      S.addEntry(meal, entry);
+      S.addEntry(meal, entry, selDate);
       vib(14);
       close();
       renderToday();
-      toast(`${food.name} added — ${fmt(entry.kcal)} kcal`);
+      toast(`${food.name} added — ${fmt(entry.kcal)} kcal${isToday() ? '' : ` · ${S.fmtDate(selDate)}`}`);
     }
     if (e.target.closest('[data-close]')) close();
   });
@@ -658,33 +752,10 @@ function renderHistory() {
       return `<button class="hrow" data-day="${d.key}" type="button">
       <div class="hrow-day"><div class="hrow-date">${S.fmtDate(d.key)}</div><div class="hrow-sub">P ${fmt(Math.round(t.p))}g · C ${fmt(Math.round(t.c))}g · F ${fmt(Math.round(t.f))}g</div></div>
       <div class="hrow-kcal ${under ? 'under' : 'over'}">${fmt(t.kcal)}</div>
+      <svg class="hrow-chev"><use href="#i-chev"/></svg>
     </button>`;
     })
     .join('');
-  list.addEventListener('click', (e) => {
-    const row = e.target.closest('[data-day]');
-    if (row) dayDetailModal(row.dataset.day);
-  }, { once: true });
-}
-
-function dayDetailModal(key) {
-  const log = S.dayLog(key);
-  const t = S.dayTotals(key);
-  const rows = S.MEALS.map((m) => {
-    const items = log.meals[m];
-    if (!items.length) return '';
-    return `<h3 class="recents-title" style="margin-top:14px">${MEAL_META[m].label}</h3>` +
-      items.map((e) => `<div class="food-row"><div class="food-main"><div class="food-name">${esc(e.name)}</div><div class="food-brand">${esc(e.qtyLabel || '')}</div></div><div class="food-kcal">${fmt(e.kcal)}</div></div>`).join('');
-  }).join('');
-  openModal(`
-    <div class="modal-head">
-      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
-      <div class="modal-title">${S.fmtDate(key)}</div>
-    </div>
-    <div class="target-big">${fmt(t.kcal)}<span class="unit">kcal</span></div>
-    <div class="macro-preview"><div class="mp-cell"><div class="v">${fmt(Math.round(t.p))}g</div><div class="k">Protein</div></div><div class="mp-cell"><div class="v">${fmt(Math.round(t.c))}g</div><div class="k">Carbs</div></div><div class="mp-cell"><div class="v">${fmt(Math.round(t.f))}g</div><div class="k">Fat</div></div></div>
-    ${rows || '<div class="empty-state">Nothing logged this day.</div>'}
-  `).wrap.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) e.target.closest('.modal-backdrop').remove(); });
 }
 
 /* ══════════ settings ══════════ */
@@ -752,6 +823,7 @@ $('#import-file').addEventListener('change', async (e) => {
   if (!f) return;
   try {
     S.importJSON(await f.text());
+    selDate = S.dayKey();
     renderAll();
     renderToday();
     toast('Backup restored');
@@ -763,6 +835,7 @@ $('#import-file').addEventListener('change', async (e) => {
 $('#btn-reset').addEventListener('click', () => {
   if (confirm('Erase ALL logged data, foods and settings?')) {
     S.resetAll();
+    selDate = S.dayKey();
     renderAll();
     renderToday();
     toast('Fresh start');

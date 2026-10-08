@@ -49,13 +49,14 @@
   <!-- ══ TOP BAR ══ -->
   <header class="topbar">
     <div class="brand"><svg class="flame"><use href="#i-flame"/></svg><span>FUEL</span></div>
-    <button class="date-chip" id="btn-date" type="button"><span id="topbar-date">Today</span></button>
+    <button class="date-chip" id="btn-date" type="button" aria-label="Jump to a day"><span id="topbar-date">Today</span><svg class="chip-chev"><use href="#i-chev"/></svg></button>
   </header>
 
   <main id="views">
 
     <!-- ══ TODAY ══ -->
     <section id="view-today" class="view active">
+      <button class="daynav-pill" id="daynav-pill" type="button" hidden><svg><use href="#i-back"/></svg><span>Viewing <b id="dayview-date">—</b> · back to today</span></button>
       <div class="ring-wrap">
         <svg class="ring" viewBox="0 0 240 240" aria-hidden="true">
           <defs>

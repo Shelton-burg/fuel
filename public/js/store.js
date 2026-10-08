@@ -39,6 +39,9 @@ export function fmtDate(key) {
   const yest = dayKey(new Date(Date.now() - 864e5));
   if (key === today) return 'Today';
   if (key === yest) return 'Yesterday';
+  if (dt.getFullYear() !== new Date().getFullYear()) {
+    return dt.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  }
   return dt.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
