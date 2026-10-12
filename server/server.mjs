@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { parseLabel } from './label.mjs';
 import { coachAdvice, weeklyReview } from './coach.mjs';
 import { mealPlan } from './mealplan.mjs';
-import { readSync, writeSync, syncConfigured } from './sync.mjs';
+import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured } from './sync.mjs';
 import { sendTelegram, telegramConfigured } from './notify.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -70,7 +70,7 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-app.get('/api/health', (req, res) => res.json({ ok: true, ai: !!GEMINI_KEY, coach: !!GEMINI_KEY, sync: syncConfigured(), tg: telegramConfigured() }));
+app.get('/api/health', (req, res) => res.json({ ok: true, ai: !!GEMINI_KEY, coach: !!GEMINI_KEY, sync: syncConfigured(), tg: telegramConfigured(), ab: autoConfigured() }));
 
 app.post('/api/parse-label', async (req, res) => {
   try {
@@ -150,6 +150,26 @@ app.post('/api/sync/blob', async (req, res) => {
     console.error('[sync-write]', e.detail || e.message);
     res.status(502).json({ error: 'sync_failed', message: 'Backup failed — try again in a minute.' });
   }
+});
+
+/* Automatic safety backup — plain JSON over HTTPS, encrypted at rest in the private
+   gist with a server-held key. Zero user setup; powers auto-restore after a phone
+   storage wipe. (The user-key encrypted /api/sync above remains the privacy-max option.) */
+app.get('/api/autobak', async (req, res) => {
+  try {
+    const s = await readAuto(slotOf(req));
+    res.json({ ok: true, state: s ? s.state : null, updatedAt: s ? s.updatedAt : null });
+  } catch (e) { console.error('[autobak-get]', e.detail || e.message); res.status(502).json({ error: 'autobak_failed', message: 'Backup storage is unavailable right now.' }); }
+});
+
+app.post('/api/autobak', async (req, res) => {
+  try {
+    const state = req.body && req.body.state;
+    if (!state || typeof state !== 'object') return res.status(400).json({ error: 'no_state' });
+    if (JSON.stringify(state).length > 3_000_000) return res.status(413).json({ error: 'too_large' });
+    const out = await writeAuto(state, slotOf(req));
+    res.json({ ok: true, updatedAt: out.updatedAt });
+  } catch (e) { console.error('[autobak-put]', e.detail || e.message); res.status(502).json({ error: 'autobak_failed', message: 'Backup failed — try again in a minute.' }); }
 });
 
 app.post('/api/mealplan', async (req, res) => {

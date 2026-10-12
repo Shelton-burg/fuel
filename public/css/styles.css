@@ -747,3 +747,7 @@ button.stat-chip:active { transform:scale(.96); }
 .food-star.on { color: var(--amber); opacity: 1; }
 .food-star.on svg { fill: currentColor; stroke: none; }
 .food-star:active { background: var(--amber-soft); }
+
+/* Data safety panel status colours */
+.ok-txt { color: var(--good); }
+.bad-txt { color: var(--bad); }

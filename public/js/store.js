@@ -13,20 +13,59 @@ function fresh() {
 
 let state = load();
 
+function normalize(s) {
+  return { ...fresh(), ...s, profile: { ...DEFAULT_PROFILE, ...(s.profile || {}) }, goals: { ...DEFAULT_GOALS, ...(s.goals || {}) } };
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return fresh();
-    const s = JSON.parse(raw);
-    return { ...fresh(), ...s, profile: { ...DEFAULT_PROFILE, ...(s.profile || {}) }, goals: { ...DEFAULT_GOALS, ...(s.goals || {}) } };
-  } catch {
+    return normalize(JSON.parse(raw));
+  } catch (e) {
+    globalThis.__fuelStoreOk = false; // storage blocked or corrupt — never crash, just start clean
     return fresh();
   }
 }
 
+// NEVER let persistence failures crash a flow (iOS can block localStorage entirely):
+// the state stays live in memory, the app warns, and autobak.js ships copies to the server.
 export function save() {
-  localStorage.setItem(KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+    globalThis.__fuelStoreOk = true;
+  } catch (e) {
+    globalThis.__fuelStoreOk = false;
+    console.error('[store] local save failed:', e && e.message);
+    try { globalThis.dispatchEvent(new Event('fuel:storage-error')); } catch {}
+  }
   try { globalThis.dispatchEvent(new Event('fuel:state-saved')); } catch {}
+}
+
+/* true when the state holds anything worth protecting (used by the auto-backup/restore) */
+export function hasAnyData(st = state) {
+  try {
+    const logs = st.logs || {};
+    for (const k of Object.keys(logs)) {
+      const meals = (logs[k] && logs[k].meals) || {};
+      for (const m of Object.keys(meals)) if ((meals[m] || []).length) return true;
+    }
+    if (Object.keys(st.weights || {}).length) return true;
+    if (Object.keys(st.workouts || {}).length) return true;
+    if (((st.settings || {}).usuals || []).length) return true;
+    if (((st.settings || {}).foodFavs || []).length) return true;
+    return false;
+  } catch { return true; } // in doubt: assume data exists, never clobber
+}
+
+/* replace the whole state (restore from mirror/cloud) — returns the new state or null on junk */
+export function adoptState(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+  try {
+    state = normalize(obj);
+    save();
+    return state;
+  } catch { return null; }
 }
 export function getState() { return state; }
 
@@ -133,7 +172,7 @@ export function importJSON(text) {
   state = { ...fresh(), ...s, profile: { ...DEFAULT_PROFILE, ...(s.profile || {}) }, goals: { ...DEFAULT_GOALS, ...(s.goals || {}) } };
   save();
 }
-export function resetAll() { state = fresh(); save(); }
+export function resetAll() { state = fresh(); state.meta.resetAt = Date.now(); save(); } // tombstone: boots won't auto-restore a wiped net over an intentional reset
 export function setProfile(p) { state.profile = { ...state.profile, ...p }; save(); }
 export function setGoals(g) { state.goals = { ...state.goals, ...g }; save(); }
 

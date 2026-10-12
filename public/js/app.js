@@ -5,6 +5,7 @@ import * as PLAIN from './plains.js';
 import * as CH from './charts.js';
 import * as SY from './sync.js';
 import { dayIdFor, PROGRAMS } from './programs.js';
+import * as ABK from './autobak.js';
 
 const $ = (q, r = document) => r.querySelector(q);
 const $$ = (q, r = document) => [...r.querySelectorAll(q)];
@@ -29,9 +30,20 @@ const isToday = () => selDate === S.dayKey();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
-if (new URLSearchParams(location.search).get('demo') === '1') seedDemo();
+const DEMO = new URLSearchParams(location.search).get('demo') === '1';
+if (DEMO) seedDemo();
 
-renderAll();
+// data-safety boot: probe storage; if this device has NO data (fresh install / wiped
+// storage / new phone) restore it from the on-device mirror or the automatic backup
+// BEFORE the first render. Never overwrites a device that already has data.
+ABK.bindState(() => S.getState());
+ABK.boot({ demo: DEMO })
+  .then((r) => {
+    renderAll();
+    if (r && r.restoredFrom === 'cloud') toast('Welcome back — your data was restored from backup');
+    else if (r && r.restoredFrom === 'device') toast('Data restored from this device\'s backup');
+  })
+  .catch(() => renderAll());
 $('#btn-fab').addEventListener('click', openAddSheet);
 $('#btn-date').addEventListener('click', openDaySheet);
 $('#daynav-pill').addEventListener('click', () => setDay(S.dayKey()));
@@ -1724,6 +1736,45 @@ function renderSettings() {
   $('#tdee-hint').textContent = `Estimated burn (TDEE): ${fmt(t.bdee)} kcal/day — targets recalculated from this.`;
   renderSyncPanel();
   renderTgPanel();
+  renderSafety();
+}
+
+/* ── data safety panel (storage health + automatic backup) ── */
+function ago(ts) {
+  const sec = Math.max(1, Math.round((Date.now() - ts) / 1000));
+  if (sec < 60) return 'just now';
+  const min = Math.round(sec / 60);
+  if (min < 60) return min + ' min ago';
+  const hr = Math.round(min / 60);
+  if (hr < 24) return hr + ' h ago';
+  return Math.round(hr / 24) + ' d ago';
+}
+
+function renderSafety() {
+  const b = $('#safety-body');
+  if (!b) return;
+  const ok = ABK.storageOk();
+  const m = ABK.meta();
+  b.innerHTML = `
+    <div class="wt-row"><span>On-device storage</span><b class="${ok ? 'ok-txt' : 'bad-txt'}">${ok ? 'Working' : 'Blocked'}</b></div>
+    <div class="wt-row"><span>Automatic backup</span><b class="${m.err ? 'bad-txt' : 'ok-txt'}">${m.err ? 'Retrying — ' + esc(String(m.err).slice(0, 40)) : m.last ? 'On · ' + ago(m.last) : 'On — first save pending'}</b></div>
+    ${ok ? '' : `<p class="hint muted">This device is blocking app storage (often an iPhone/Safari privacy setting like “Block All Cookies”). FUEL keeps working and everything still goes to your automatic backup — but switching that setting off keeps a copy on the phone too.</p>`}
+    <p class="hint muted">Every change is backed up automatically to your server, and comes back on its own if a phone ever loses its data.</p>
+    <button class="btn ghost" data-abk-now type="button">Back up now</button>
+    <button class="btn ghost" data-abk-restore type="button">Restore from automatic backup</button>`;
+}
+
+async function abkRestore() {
+  const r = await ABK.autoPull();
+  if (!r || !r.state || !S.hasAnyData(r.state)) { toast('No automatic backup found yet', 'i-x'); return; }
+  const when = r.updatedAt ? ago(r.updatedAt) : 'recently';
+  if (!confirm(`Replace this device's data with the automatic backup from ${when}?`)) return;
+  if (!S.adoptState(r.state)) { toast('That backup looked damaged', 'i-x'); return; }
+  selDate = S.dayKey();
+  renderAll();
+  renderToday();
+  vib(12);
+  toast('Restored from your automatic backup');
 }
 
 $('#btn-save-profile').addEventListener('click', () => {
@@ -1784,6 +1835,7 @@ $('#import-file').addEventListener('change', async (e) => {
 $('#btn-reset').addEventListener('click', () => {
   if (confirm('Erase ALL logged data, foods and settings?')) {
     S.resetAll();
+    ABK.onReset(); // clear the on-device mirror too, so a deliberate reset actually sticks
     selDate = S.dayKey();
     renderAll();
     renderToday();
@@ -1799,6 +1851,11 @@ $('#view-settings').addEventListener('click', (e) => {
   if (t.closest('#btn-sync-key')) { syncShowKey(); return; }
   if (t.closest('#btn-sync-restore')) { syncRestore(); return; }
   if (t.closest('#btn-sync-off')) { syncOff(); return; }
+  if (t.closest('[data-abk-now]')) {
+    ABK.pushNow(S.getState()).then((r) => toast(r.ok ? 'Backed up just now' : r.skipped === 'empty' ? 'Nothing logged yet to back up' : 'Backup failed — it will retry automatically', r.ok || r.skipped === 'empty' ? undefined : 'i-x'));
+    return;
+  }
+  if (t.closest('[data-abk-restore]')) { abkRestore(); return; }
   if (t.closest('#btn-tg-test')) { tgTest(); return; }
 });
 $('#view-settings').addEventListener('change', (e) => {
@@ -1808,9 +1865,19 @@ $('#view-settings').addEventListener('change', (e) => {
   }
 });
 
+/* ── data-safety wiring ── */
+let storageWarned = false;
+window.addEventListener('fuel:storage-error', () => {
+  if (storageWarned) return;
+  storageWarned = true;
+  toast('This device is blocking app storage — your data is going to the server backup instead', 'i-x');
+});
+window.addEventListener('fuel:autobak', () => { renderSafety(); });
+
 /* ── auto cloud backup (debounced) + toast bridge ── */
 let syncTimer = null, syncInFlight = false;
 window.addEventListener('fuel:state-saved', () => {
+  ABK.onSave(); // automatic safety backup (self-guarded for demo)
   if (new URLSearchParams(location.search).get('demo') === '1' && !window.__syncAllowDemo) return;
   if (!S.getSetting('syncKey')) return;
   clearTimeout(syncTimer);
