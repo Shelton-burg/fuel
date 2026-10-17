@@ -171,7 +171,8 @@ svg.sm { width:14px; height:14px; }
 .meal-add svg { width:17px; height:17px; }
 .meal-add:active { transform:scale(.9); }
 .meal-items { border-top:1px solid var(--line); }
-.mi { display:flex; align-items:center; gap:11px; padding:11px 15px; border-bottom:1px solid rgba(255,255,255,.04); }
+.mi { display:flex; align-items:center; gap:11px; padding:11px 15px; border-bottom:1px solid rgba(255,255,255,.04); cursor:pointer; }
+.mi:active { background:rgba(255,255,255,.035); }
 .mi:last-child { border-bottom:0; }
 .mi-main { flex:1; min-width:0; }
 .mi-name { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -452,6 +453,12 @@ svg.sm { width:14px; height:14px; }
 .rec-name { font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .rec-sub { font-size:11.5px; color:var(--muted); }
 .rec-kcal { font-family:var(--font-num); font-size:13px; color:var(--text-2); font-weight:600; }
+.rec-del {
+  display:flex; align-items:center; justify-content:center; width:30px; height:30px; flex:0 0 auto;
+  border-radius:9px; border:0; background:transparent; color:var(--muted);
+}
+.rec-del:active { background:rgba(255,93,108,.15); color:var(--bad); }
+.rec-del svg { width:14px; height:14px; }
 
 /* ── modals (built by JS) ────────────────────────────────── */
 .modal-backdrop {
@@ -570,6 +577,7 @@ svg.sm { width:14px; height:14px; }
   box-shadow:0 10px 40px rgba(0,0,0,.5); backdrop-filter:blur(14px);
   display:flex; align-items:center; gap:9px;
   animation:toastIn .3s cubic-bezier(.2,.9,.3,1.3);
+  pointer-events:none; /* informational only — never swallow a tap on what it covers */
 }
 .toast svg { width:16px; height:16px; color:var(--good); }
 @keyframes toastIn { from { opacity:0; transform:translate(-50%, 12px) scale(.9); } }

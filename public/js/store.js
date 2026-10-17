@@ -109,6 +109,54 @@ export function removeEntry(meal, id, key = dayKey()) {
   save();
 }
 
+/* ── editing a logged entry ── */
+export function findEntry(id, key = dayKey()) {
+  const log = dayLog(key);
+  for (const m of MEALS) {
+    const e = (log.meals[m] || []).find((x) => x.id === id);
+    if (e) return { meal: m, entry: e };
+  }
+  return null;
+}
+/** Overwrite an entry in place (may move it to another meal). Keeps its id + original ts. */
+export function updateEntry(meal, id, patch, key = dayKey(), newMeal = meal) {
+  const log = dayLog(key);
+  const i = (log.meals[meal] || []).findIndex((x) => x.id === id);
+  if (i < 0) return null;
+  const merged = { ...log.meals[meal][i], ...patch, id, ts: log.meals[meal][i].ts };
+  if (newMeal && newMeal !== meal && MEALS.includes(newMeal)) {
+    log.meals[meal].splice(i, 1);
+    log.meals[newMeal].push(merged);
+  } else {
+    log.meals[meal][i] = merged;
+  }
+  save();
+  return merged;
+}
+/** Rebuild a food model from a logged entry so the portion sheet can re-open it.
+    Entries written since the edit feature carry basis/qty/per; older ones are
+    derived from the quantity label ("275 g", "1 × serve", "1 cup ≈ 180 g"). */
+export function foodFromEntry(e) {
+  if (!e) return null;
+  const num = (v) => (typeof v === 'number' && isFinite(v) && v > 0 ? v : null);
+  const gramsM = String(e.qtyLabel || '').match(/(\d+(?:\.\d+)?)\s*g\b/i);
+  const servesM = String(e.qtyLabel || '').match(/(\d+(?:\.\d+)?)\s*(?:×\s*)?serves?\b/i);
+  const qty = num(e.qty) || (gramsM ? Number(gramsM[1]) : null) || (servesM ? Number(servesM[1]) : null) || 1;
+  const cached = e.foodId ? getFood(e.foodId) : null;
+  if (cached && cached.kcal != null) return { ...cached, basis: e.basis || cached.basis || '100g', lastQty: qty };
+  const basis = e.basis || (gramsM ? '100g' : 'serve');
+  if (e.per && (e.per.kcal || e.per.kcal === 0)) {
+    return { name: e.name, brand: e.brand || '', basis, source: e.src || 'manual', kcal: e.per.kcal, p: e.per.p || 0, c: e.per.c || 0, f: e.per.f || 0, lastQty: qty };
+  }
+  const factor = basis === '100g' ? qty / 100 : qty;
+  const div = factor > 0 ? factor : 1;
+  const r1 = (v) => Math.round(((v || 0) / div) * 10) / 10;
+  return {
+    name: e.name, brand: e.brand || '', basis, source: e.src || 'manual',
+    kcal: r1(e.kcal), p: r1(e.p), c: r1(e.c), f: r1(e.f), lastQty: qty,
+  };
+}
+
 export function dayTotals(key = dayKey()) {
   const log = dayLog(key);
   const t = { kcal: 0, p: 0, c: 0, f: 0 };
@@ -139,17 +187,58 @@ export function streak() {
   return n;
 }
 
-/* ── foods cache ── */
+/* ── foods cache: every scanned/saved food, de-duped by barcode (or name+brand) ── */
+export function foodKey(f) {
+  if (f && f.barcode) return 'bc:' + String(f.barcode).trim();
+  const nm = String((f && f.name) || '').toLowerCase().trim();
+  const br = String((f && f.brand) || '').toLowerCase().trim();
+  return 'nm:' + nm + '|' + br;
+}
 export function saveFood(f) {
-  if (!f.id) f.id = 'f' + Date.now() + Math.random().toString(36).slice(2, 6);
-  state.foods[f.id] = { ...f, ts: Date.now() };
+  if (!f || !f.name) return null;
+  state.foods = state.foods || {};
+  const nm = String(f.name).toLowerCase().trim();
+  const br = String(f.brand || '').toLowerCase().trim();
+  const all = Object.values(state.foods);
+  let id = f.id;
+  if (!id) {
+    // same barcode wins; otherwise same name+brand — never two records for one food
+    const hit = (f.barcode && all.find((x) => x.barcode && String(x.barcode) === String(f.barcode)))
+      || all.find((x) => String(x.name || '').toLowerCase().trim() === nm && String(x.brand || '').toLowerCase().trim() === br);
+    if (hit) id = hit.id;
+  }
+  if (!id) id = 'f' + Date.now() + Math.random().toString(36).slice(2, 6);
+  const prev = state.foods[id] || {};
+  const merged = { ...prev, ...f, id, key: foodKey(f), ts: Date.now() };
+  for (const kk of Object.keys(merged)) if (merged[kk] === undefined) delete merged[kk];
+  state.foods[id] = merged;
+  // keep the newest 300 — a long list must never slow logging down
+  const ids = Object.keys(state.foods);
+  if (ids.length > 300) {
+    ids.sort((a, b) => (state.foods[b].ts || 0) - (state.foods[a].ts || 0));
+    for (const old of ids.slice(300)) delete state.foods[old];
+  }
   save();
-  return f.id;
+  return id;
 }
-export function getFood(id) { return state.foods[id]; }
-export function recentFoods(n = 8) {
-  return Object.values(state.foods).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, n);
+export function getFood(id) { return (state.foods || {})[id]; }
+export function myFoods(n = 10) {
+  return Object.values(state.foods || {}).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, n);
 }
+export function searchMyFoods(q, n = 5) {
+  const t = String(q || '').toLowerCase().trim();
+  if (!t) return [];
+  return Object.values(state.foods || {})
+    .filter((f) => `${f.name || ''} ${f.brand || ''}`.toLowerCase().includes(t))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+    .slice(0, n);
+}
+export function removeFood(id) {
+  if (!state.foods || !state.foods[id]) return;
+  delete state.foods[id];
+  save();
+}
+export function recentFoods(n = 8) { return myFoods(n); }
 
 /* ── targets (Mifflin-St Jeor) ── */
 export function computeTargets(profile) {
@@ -255,7 +344,7 @@ export function frequentFoods(n = 6) {
         if (!k || !e.kcal) continue;
         const a = agg[k] || (agg[k] = { name: e.name, qtyLabel: e.qtyLabel || '', kcal: e.kcal, p: e.p || 0, c: e.c || 0, f: e.f || 0, count: 0, ts: 0 });
         a.count++;
-        if ((e.ts || 0) >= a.ts) { a.ts = e.ts || 0; a.name = e.name; a.qtyLabel = e.qtyLabel || ''; a.kcal = e.kcal; a.p = e.p || 0; a.c = e.c || 0; a.f = e.f || 0; }
+        if ((e.ts || 0) >= a.ts) { a.ts = e.ts || 0; a.name = e.name; a.qtyLabel = e.qtyLabel || ''; a.kcal = e.kcal; a.p = e.p || 0; a.c = e.c || 0; a.f = e.f || 0; a.basis = e.basis || null; a.qty = e.qty ?? null; a.per = e.per || null; }
       }
     }
   }
@@ -269,7 +358,7 @@ export function saveUsual(name, meal, items) {
     id: 'u' + Date.now().toString(36),
     name: String(name || 'Usual meal').slice(0, 40),
     meal,
-    items: items.map((e) => ({ name: e.name, kcal: e.kcal || 0, p: e.p || 0, c: e.c || 0, f: e.f || 0, qtyLabel: e.qtyLabel || '' })),
+    items: items.map((e) => ({ name: e.name, kcal: e.kcal || 0, p: e.p || 0, c: e.c || 0, f: e.f || 0, qtyLabel: e.qtyLabel || '', basis: e.basis || null, qty: e.qty ?? null, per: e.per || null, src: e.src || null })),
     kcal: sum('kcal'), p: sum('p'), c: sum('c'), f: sum('f'),
     ts: Date.now(), uses: 0,
   };
