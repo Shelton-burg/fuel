@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseLabel } from './label.mjs';
-import { coachAdvice, weeklyReview } from './coach.mjs';
+import { coachAdvice, weeklyReview, coachChat } from './coach.mjs';
 import { mealPlan } from './mealplan.mjs';
 import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured } from './sync.mjs';
 import { sendTelegram, telegramConfigured } from './notify.mjs';
@@ -13,8 +13,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 4170;
 
 // Local dev convenience: pull the key from known local env files when unset.
-function loadKey() {
-  if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+function loadKey(name = 'GEMINI_API_KEY') {
+  if (process.env[name]) return process.env[name];
   const candidates = [
     'C:/Users/shelt/AppData/Local/hermes/.env',
     'C:/Users/shelt/tradedesk-replica/current/.env',
@@ -22,13 +22,17 @@ function loadKey() {
   for (const p of candidates) {
     try {
       if (!existsSync(p)) continue;
-      const m = readFileSync(p, 'utf8').match(/^(?:GEMINI_API_KEY|GOOGLE_API_KEY)=(.+)$/m);
+      const re = name === 'DEEPSEEK_API_KEY' ? /^DEEPSEEK_API_KEY=(.+)$/m : /^(?:GEMINI_API_KEY|GOOGLE_API_KEY)=(.+)$/m;
+      const m = readFileSync(p, 'utf8').match(re);
       if (m) return m[1].trim().replace(/^["']|["']$/g, '');
     } catch {}
   }
   return null;
 }
-const GEMINI_KEY = loadKey();
+const GEMINI_KEY = loadKey('GEMINI_API_KEY');
+const DEEPSEEK_KEY = loadKey('DEEPSEEK_API_KEY');
+const KEYS = { deepseek: DEEPSEEK_KEY, gemini: GEMINI_KEY };
+const hasCoach = !!(DEEPSEEK_KEY || GEMINI_KEY);
 
 const app = express();
 app.use(express.json({ limit: '6mb' }));
@@ -70,7 +74,10 @@ app.get('/api/search', async (req, res) => {
   }
 });
 
-app.get('/api/health', (req, res) => res.json({ ok: true, ai: !!GEMINI_KEY, coach: !!GEMINI_KEY, sync: syncConfigured(), tg: telegramConfigured(), ab: autoConfigured() }));
+app.get('/api/health', (req, res) => res.json({
+  ok: true, ai: !!GEMINI_KEY, coach: hasCoach, coachProvider: DEEPSEEK_KEY ? 'deepseek' : GEMINI_KEY ? 'gemini' : null,
+  sync: syncConfigured(), tg: telegramConfigured(), ab: autoConfigured(),
+}));
 
 app.post('/api/parse-label', async (req, res) => {
   try {
@@ -92,11 +99,11 @@ app.post('/api/parse-label', async (req, res) => {
 
 app.post('/api/coach', async (req, res) => {
   try {
-    if (!GEMINI_KEY) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
+    if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const payload = req.body && req.body.payload;
     if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'no_payload' });
     if (JSON.stringify(payload).length > 20000) return res.status(413).json({ error: 'too_large' });
-    const result = await coachAdvice(payload, GEMINI_KEY);
+    const result = await coachAdvice(payload, KEYS);
     res.json({ ok: true, result });
   } catch (e) {
     console.error('[coach]', e.detail || e.message);
@@ -104,13 +111,30 @@ app.post('/api/coach', async (req, res) => {
   }
 });
 
+app.post('/api/coach/chat', async (req, res) => {
+  try {
+    if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
+    const body = req.body || {};
+    const ctx = body.context;
+    if (!ctx || typeof ctx !== 'object') return res.status(400).json({ error: 'no_context' });
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    if (!messages.length) return res.status(400).json({ error: 'no_messages' });
+    if (JSON.stringify(messages).length > 12000 || JSON.stringify(ctx).length > 20000) return res.status(413).json({ error: 'too_large' });
+    const result = await coachChat(ctx, messages, KEYS);
+    res.json({ ok: true, result });
+  } catch (e) {
+    console.error('[coach-chat]', e.detail || e.message);
+    res.status(502).json({ error: 'coach_failed', message: 'The coach could not answer just now — try again.' });
+  }
+});
+
 app.post('/api/weekly', async (req, res) => {
   try {
-    if (!GEMINI_KEY) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
+    if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const payload = req.body && req.body.payload;
     if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'no_payload' });
     if (JSON.stringify(payload).length > 20000) return res.status(413).json({ error: 'too_large' });
-    const result = await weeklyReview(payload, GEMINI_KEY);
+    const result = await weeklyReview(payload, KEYS);
     res.json({ ok: true, result });
   } catch (e) {
     console.error('[weekly]', e.detail || e.message);
@@ -174,11 +198,11 @@ app.post('/api/autobak', async (req, res) => {
 
 app.post('/api/mealplan', async (req, res) => {
   try {
-    if (!GEMINI_KEY) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
+    if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const payload = req.body && req.body.payload;
     if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'no_payload' });
     if (JSON.stringify(payload).length > 30000) return res.status(413).json({ error: 'too_large' });
-    const result = await mealPlan(payload, GEMINI_KEY);
+    const result = await mealPlan(payload, KEYS);
     res.json({ ok: true, result });
   } catch (e) {
     console.error('[mealplan]', e.detail || e.message);

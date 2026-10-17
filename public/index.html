@@ -103,6 +103,12 @@
         </div>
       </div>
 
+      <button class="panel coach-teaser" id="coach-teaser" type="button">
+        <span class="ct-ico"><svg><use href="#i-spark"/></svg></span>
+        <span class="ct-main"><b id="ct-title">Ask your coach</b><span class="muted sm" id="ct-sub">Grounded in your last 14 days — eating, weight and training</span></span>
+        <svg class="ct-chev"><use href="#i-chev"/></svg>
+      </button>
+
       <div class="meals" id="meals"></div>
 
       <div class="panel quick-panel" id="quick-panel">
@@ -229,6 +235,15 @@
     </section>
 
     <!-- ══ GOALS & COACH ══ -->
+    <section id="view-coach" class="view">
+      <div class="page-head coach-head">
+        <button class="icon-btn" id="coach-back" type="button" aria-label="Back"><svg><use href="#i-back"/></svg></button>
+        <div><h1>Coach</h1><p class="muted">Grounded in your own numbers</p></div>
+        <button class="link-btn" id="coach-clear" type="button">Clear</button>
+      </div>
+      <div id="coach-body"></div>
+    </section>
+
     <section id="view-goals" class="view">
       <div class="page-head"><h1>Goals &amp; Coach</h1><p class="muted">Your goal in — a full plan out</p></div>
       <div id="goals-body"></div>

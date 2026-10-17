@@ -5,7 +5,7 @@ const KEY = 'fuel-state-v1';
 export const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'];
 
 export const DEFAULT_PROFILE = { sex: 'male', age: 38, height: 180, weight: 85, activity: 1.55, goalType: 'maintain', rate: 0.5, aspir: 'maintain', targetWeight: null, notes: '', calPref: null };
-export const DEFAULT_GOALS = { kcal: 2550, protein: 180, carbs: 255, fat: 71 };
+export const DEFAULT_GOALS = { kcal: 2550, protein: 180, carbs: 298, fat: 71 }; // 180p + 298c + 71f = 2,550 (protein 4, carbs 4, fat 9)
 
 function fresh() {
   return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, measures: {}, recipes: {}, settings: {}, meta: { created: Date.now() } };

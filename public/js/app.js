@@ -4,7 +4,7 @@ import * as OFF from './off.js';
 import * as PLAIN from './plains.js';
 import * as CH from './charts.js';
 import * as SY from './sync.js';
-import { dayIdFor, PROGRAMS } from './programs.js';
+import { dayIdFor, PROGRAMS, PROGRAM_LIST, EX_LIB, exGroup } from './programs.js';
 import * as ABK from './autobak.js';
 
 const $ = (q, r = document) => r.querySelector(q);
@@ -197,12 +197,14 @@ function switchView(v) {
   if (v === 'history') { renderHistory(); renderConsistency(); }
   if (v === 'today') renderWeek();
   if (v === 'goals') renderGoals();
+  if (v === 'coach') renderCoach();
 }
 
 /* ══════════ today render ══════════ */
 function renderAll() {
   renderToday();
   renderSettings();
+  renderCoachTeaser();
 }
 
 function mealForNow() {
@@ -2166,3 +2168,260 @@ function recipeEditor(id = null) {
   });
   setTimeout(() => nameEl.focus(), 120);
 }
+
+/* ══════════ coach: conversation grounded in the user's own numbers ══════════
+   The client computes every figure it will let the coach talk about, then the server
+   fills the evidence chips from that context — so a number on screen is always one
+   the app calculated, never one the model made up. */
+const COACH_THREAD_MAX = 30;
+const coachThread = () => S.getSetting('coachThread') || [];
+const saveCoachThread = (t) => S.setSetting('coachThread', t.slice(-COACH_THREAD_MAX));
+let coachSending = false;
+
+function coachContext() {
+  const st = S.getState();
+  const p = st.profile, g = st.goals;
+  const rd = S.recentDays(14);                 // newest first
+  const logged = rd.filter((d) => d.any);
+  const last7 = rd.slice(0, 7).filter((d) => d.any);
+  const avg = (list, f) => (list.length ? Math.round(list.reduce((a, d) => a + (f(d) || 0), 0) / list.length) : null);
+  const target = g.kcal || 0;
+  const isWeekend = (key) => { const d = new Date(key + 'T12:00:00').getDay(); return d === 0 || d === 6; };
+  const we = logged.filter((d) => isWeekend(d.key));
+  const wd = logged.filter((d) => !isWeekend(d.key));
+
+  const byMeal = {};
+  for (const d of logged) {
+    const log = S.dayLog(d.key);
+    for (const m of S.MEALS) {
+      const items = log.meals[m] || [];
+      if (!items.length) continue;
+      byMeal[m] = byMeal[m] || { kcal: 0, n: 0 };
+      byMeal[m].kcal += items.reduce((a, e) => a + (e.kcal || 0), 0);
+      byMeal[m].n++;
+    }
+  }
+  for (const k of Object.keys(byMeal)) byMeal[k] = { kcal: Math.round(byMeal[k].kcal / byMeal[k].n) };
+
+  const ws = S.weightSeries();
+  const now = ws.length ? ws[ws.length - 1].kg : (p.weight || null);
+  const ago = (days) => { const cut = S.dayKey(new Date(Date.now() - days * 864e5)); const f = ws.filter((x) => x.key >= cut); return f.length ? f[0].kg : null; };
+  const chg = (days) => (now != null && ago(days) != null ? Math.round((now - ago(days)) * 10) / 10 : null);
+
+  const waistSeries = S.measureSeries('waist');
+  const waist = waistSeries.length ? waistSeries[waistSeries.length - 1].v : null;
+  const waistOld = waistSeries.find((x) => x.key >= S.dayKey(new Date(Date.now() - 28 * 864e5)));
+  const waist28 = waist != null && waistOld ? Math.round((waist - waistOld.v) * 10) / 10 : null;
+
+  const fin = S.sessionHistory(90).filter((h) => h.finishedAt);
+  const cut28 = S.dayKey(new Date(Date.now() - 28 * 864e5));
+  const s28 = fin.filter((h) => h.key >= cut28).length;
+
+  // weekly sets per muscle — mirrors the Muscles tab in Train
+  const monday = (offsetWeeks) => {
+    const x = new Date(); x.setHours(0, 0, 0, 0);
+    x.setDate(x.getDate() - ((x.getDay() + 6) % 7) - offsetWeeks * 7);
+    return S.dayKey(x);
+  };
+  const setsIn = (fromWeek) => {
+    const start = monday(fromWeek);
+    const endD = new Date(start + 'T12:00:00'); endD.setDate(endD.getDate() + 7);
+    const end = S.dayKey(endD);
+    const out = {};
+    for (const [key, ses] of Object.entries(st.workouts || {})) {
+      if (key < start || key >= end) continue;
+      for (const ex of ses.ex || []) {
+        const n = (ex.sets || []).filter((x) => x.done).length;
+        if (!n) continue;
+        out[exGroup(ex.name)] = (out[exGroup(ex.name)] || 0) + n;
+      }
+    }
+    return out;
+  };
+  const thisWeek = setsIn(0), lastWeek = setsIn(1);
+  const muscles = Object.keys({ ...thisWeek, ...lastWeek })
+    .map((group) => ({ group, sets: thisWeek[group] || 0, lastSets: lastWeek[group] || 0 }))
+    .sort((a, b) => b.sets - a.sets);
+
+  const liftAgg = {};
+  for (const h of fin) for (const ex of h.ex || []) {
+    const done = (ex.sets || []).filter((x) => x.done);
+    if (!done.length) continue;
+    const top = done.reduce((a, b) => ((b.w || 0) > (a.w || 0) ? b : a), done[0]);
+    liftAgg[ex.name] = liftAgg[ex.name] || { name: ex.name, bestKg: 0, sessions: 0 };
+    liftAgg[ex.name].bestKg = Math.max(liftAgg[ex.name].bestKg, top.w || 0);
+    liftAgg[ex.name].sessions++;
+  }
+  const lifts = Object.values(liftAgg).sort((a, b) => b.sessions - a.sessions).slice(0, 8)
+    .map((l) => ({ name: l.name, bestKg: l.bestKg, sessions: l.sessions }));
+
+  const round10 = (v) => Math.max(1200, Math.round(v / 10) * 10);
+  const inProgram = new Set((PROGRAMS[S.getSetting('programId') || 'muscle']?.days ? Object.values(PROGRAMS[S.getSetting('programId') || 'muscle'].days) : []).flatMap((d) => (d.ex || []).map((x) => x.name)));
+
+  return {
+    today: S.dayKey(),
+    profile: { sex: p.sex, age: p.age, height: p.height, weight: p.weight, activity: p.activity, aspiration: aspirOf(p), goalType: p.goalType, rate: p.rate, targetWeight: p.targetWeight || null, note: (p.notes || '').slice(0, 300) },
+    targets: { kcal: g.kcal, protein: g.protein, carbs: g.carbs, fat: g.fat },
+    intake: {
+      days14: logged.length,
+      kcal7: avg(last7, (d) => d.totals.kcal), kcal14: avg(logged, (d) => d.totals.kcal),
+      protein7: avg(last7, (d) => d.totals.p), protein14: avg(logged, (d) => d.totals.p),
+      carbs14: avg(logged, (d) => d.totals.c), fat14: avg(logged, (d) => d.totals.f),
+      adherencePct: logged.length && target ? Math.round((logged.filter((d) => Math.abs(d.totals.kcal - target) <= 100).length / logged.length) * 100) : null,
+      proteinHitDays: logged.length ? logged.filter((d) => d.totals.p >= (g.protein || 0) - 10).length : null,
+      weekendKcal: avg(we, (d) => d.totals.kcal), weekdayKcal: avg(wd, (d) => d.totals.kcal),
+      byMeal,
+    },
+    weight: { now, change7d: chg(7), change28d: chg(28), target: p.targetWeight || null },
+    measures: { waist, change28d: waist28 },
+    training: { programId: S.getSetting('programId') || 'muscle', sessions28d: s28, perWeek: Math.round((s28 / 4) * 10) / 10, muscles, lifts },
+    recipes: S.recipes().slice(0, 6).map((r) => ({ name: r.name, perServeKcal: S.recipeTotals(r).per.kcal })),
+    last7: rd.slice(0, 7).map((d) => ({ key: d.key, kcal: d.totals.kcal, protein: Math.round(d.totals.p), logged: d.any })),
+    allowed: {
+      kcal: [round10(g.kcal * 0.9), round10(g.kcal * 0.95), g.kcal, round10(g.kcal * 1.05)].filter((v, i, a) => a.indexOf(v) === i),
+      protein: [g.protein - 20, g.protein - 10, g.protein, g.protein + 10].filter((v) => v >= 80),
+      rate: [0.25, 0.5, 0.75],
+      programs: PROGRAM_LIST,
+      swaps: EX_LIB.map((e) => e.name).filter((n) => !inProgram.has(n)).slice(0, 40),
+    },
+  };
+}
+
+function coachEvChip(e) {
+  const one = (v) => (Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 10) / 10);
+  const isChange = /_(7d|28d|14d)$/.test(e.metric) && /change|weight_|waist_/.test(e.metric) && !/^weight_now/.test(e.metric);
+  const sign = isChange && e.value > 0 ? '+' : '';
+  const tgt = e.target == null ? '' : `<i> / ${one(e.target)}${e.unit ? ' ' + e.unit : ''}</i>`;
+  return `<span class="ev-chip"><b>${sign}${one(e.value)}${e.unit ? ' ' + e.unit : ''}</b>${tgt}<span>${esc(e.label)}</span></span>`;
+}
+
+function renderCoach() {
+  const el = $('#coach-body');
+  if (!el) return;
+  const thread = coachThread();
+  const starters = ['What should I change this week?', 'How is my protein tracking?', 'Am I training shoulders enough?', 'Should I cut or maintain?'];
+  const empty = !thread.length;
+  el.innerHTML = `
+    <div class="co-thread" id="co-thread">
+      ${empty ? `<div class="co-intro panel"><b>Ask me anything about your week.</b>
+        <p class="muted sm">I can see your last 14 days of food, your weight and waist, every session and your muscle-group volume. Every number I quote comes from that — if there isn't enough data, I'll say so.</p></div>` : ''}
+      ${thread.map((m) => (m.role === 'user'
+        ? `<div class="co-msg co-user">${esc(m.text)}</div>`
+        : `<div class="co-msg co-coach">
+             <div class="co-who"><svg><use href="#i-spark"/></svg> Coach</div>
+             <p class="co-text">${esc(m.text)}</p>
+             ${(m.ev || []).length ? `<div class="co-ev">${m.ev.map(coachEvChip).join('')}</div>` : ''}
+             ${(m.act || []).length ? `<div class="co-acts">${m.act.map((a, i) => `<button class="btn ghost sm-btn" data-cact="${i}" data-ci="${thread.indexOf(m)}" type="button">${esc(a.label)}</button>`).join('')}</div>` : ''}
+           </div>`)).join('')}
+      ${coachSending ? `<div class="co-msg co-coach co-typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>` : ''}
+    </div>
+    ${!coachSending && thread.length && thread[thread.length - 1].role === 'coach' && (thread[thread.length - 1].fu || []).length
+      ? `<div class="chip-row wrap co-fu">${thread[thread.length - 1].fu.map((f) => `<button class="chip" data-cfu="${esc(f)}" type="button">${esc(f)}</button>`).join('')}</div>` : ''}
+    ${empty ? `<div class="chip-row wrap co-start">${starters.map((q) => `<button class="chip" data-cfu="${esc(q)}" type="button">${esc(q)}</button>`).join('')}</div>` : ''}
+    <form class="co-compose" id="coach-form">
+      <input id="coach-q" placeholder="Ask about training, food or your weight…" autocomplete="off" ${coachSending ? 'disabled' : ''}>
+      <button class="btn primary co-send" type="submit" ${coachSending ? 'disabled' : ''}>Send</button>
+    </form>`;
+  const th = $('#co-thread');
+  if (th) th.scrollIntoView({ block: 'end' });
+}
+
+function renderCoachTeaser() {
+  const t = $('#coach-teaser');
+  if (!t) return;
+  const thread = coachThread();
+  const last = [...thread].reverse().find((m) => m.role === 'coach');
+  if (last) {
+    $('#ct-title').textContent = 'Your coach';
+    $('#ct-sub').textContent = last.text.length > 96 ? last.text.slice(0, 96).trim() + '…' : last.text;
+  }
+}
+
+async function coachSend(text) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!t || coachSending) return;
+  coachSending = true;
+  const thread = coachThread().concat([{ role: 'user', text: t, ts: Date.now() }]);
+  saveCoachThread(thread);
+  renderCoach();
+  try {
+    const r = await fetch('/api/coach/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        context: coachContext(),
+        messages: thread.slice(-10).map((m) => ({ role: m.role, text: m.text })),
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.message || 'The coach could not answer just now.');
+    const res = j.result;
+    saveCoachThread(thread.concat([{ role: 'coach', text: res.text, ev: res.evidence, act: res.actions, fu: res.followups, ts: Date.now() }]));
+  } catch (e) {
+    saveCoachThread(thread.concat([{ role: 'coach', text: `I couldn't answer that just now — ${String(e.message || e).slice(0, 80)}`, ev: [], act: [], fu: [] }]));
+    toast('Coach unavailable — try again', 'i-x');
+  }
+  coachSending = false;
+  renderCoach();
+  renderCoachTeaser();
+}
+
+function applyCoachAction(action) {
+  if (!action) return;
+  const g = S.getState().goals;
+  const p = S.getState().profile;
+  const retune = (patch) => {
+    const kcal = patch.kcal ?? g.kcal;
+    const protein = patch.protein ?? g.protein;
+    const fat = Math.round((kcal * 0.25) / 9);
+    const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
+    S.setGoals({ ...patch, kcal, protein, fat, carbs });
+  };
+  if (action.kind === 'kcal') retune({ kcal: Number(action.value) });
+  else if (action.kind === 'protein') retune({ protein: Number(action.value) });
+  else if (action.kind === 'rate') {
+    const rate = Number(action.value);
+    S.setProfile({ rate });
+    const t = S.computeTargets({ ...p, rate });
+    S.setGoals({ kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat });
+  } else if (action.kind === 'program') {
+    S.setSetting('programId', action.value);
+    switchView('train');
+  } else if (action.kind === 'swap') {
+    switchView('train');
+    toast(`Swap in ${action.value} from the exercise sheet`);
+    return;
+  } else if (action.kind === 'deload') {
+    switchView('train');
+    toast('Deload week: drop one set per exercise, keep the weights');
+    return;
+  }
+  vib(12);
+  toast('Applied');
+  renderToday();
+  renderCoach();
+}
+
+$('#coach-teaser')?.addEventListener('click', () => switchView('coach'));
+$('#coach-back')?.addEventListener('click', () => switchView('today'));
+$('#coach-clear')?.addEventListener('click', () => { saveCoachThread([]); renderCoach(); renderCoachTeaser(); toast('Conversation cleared'); });
+document.addEventListener('submit', (e) => {
+  if (e.target && e.target.id === 'coach-form') {
+    e.preventDefault();
+    const inp = $('#coach-q');
+    const v = inp ? inp.value : '';
+    if (inp) inp.value = '';
+    coachSend(v);
+  }
+});
+document.addEventListener('click', (e) => {
+  const fu = e.target.closest('[data-cfu]');
+  if (fu) { coachSend(fu.dataset.cfu); return; }
+  const act = e.target.closest('[data-cact]');
+  if (act) {
+    const thread = coachThread();
+    const msg = thread[Number(act.dataset.ci)];
+    const a = msg && msg.act ? msg.act[Number(act.dataset.cact)] : null;
+    applyCoachAction(a);
+  }
+});
