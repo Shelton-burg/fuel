@@ -594,7 +594,8 @@ export function portionModal(food, edit = null) {
         basis, qty,
         per: { kcal: r1(unitKcal), p: r1(food.p), c: r1(food.c), f: r1(food.f) },
       };
-      entry.foodId = S.saveFood({ ...food, id: food.id, lastQty: qty }) || food.id || null;
+      if (food.isRecipe) { entry.recipeId = food.recipeId; entry.foodId = null; }
+      else entry.foodId = S.saveFood({ ...food, id: food.id, lastQty: qty }) || food.id || null;
       vib(14);
       if (editing) {
         const moved = S.updateEntry(edit.meal, edit.id, entry, selDate, meal);
@@ -620,6 +621,7 @@ function searchModal() {
     <div class="modal-head">
       <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
       <div class="modal-title">Search foods</div>
+      <button class="link-btn rc-head-btn" data-rclist type="button">Recipes${S.recipes().length ? ' · ' + S.recipes().length : ''}</button>
     </div>
     <div class="field"><input id="q" placeholder="e.g. weet-bix, greek yoghurt, bread…" autocomplete="off"></div>
     <div id="results"></div>
@@ -636,7 +638,7 @@ function searchModal() {
   // every rendered row is { f, act:'open'|'quick', star:bool, sub?, note? }
   const starHTML = (i, on) => `<span class="food-star${on ? ' on' : ''}" data-star="${i}" role="button" aria-label="Favourite"><svg><use href="#i-star"/></svg></span>`;
   const rowHTML = (r, i) => `<button class="food-row" data-i="${i}" type="button">
-        ${r.f.image ? `<img class="food-thumb" src="${esc(r.f.image)}" alt="" loading="lazy">` : `<span class="food-thumb ph"><svg><use href="#i-search"/></svg></span>`}
+        ${r.f.image ? `<img class="food-thumb" src="${esc(r.f.image)}" alt="" loading="lazy">` : `<span class="food-thumb ph${r.f.isRecipe ? ' amber' : ''}"><svg><use href="#${r.f.isRecipe ? 'i-flame' : 'i-search'}"/></svg></span>`}
         <div class="food-main"><div class="food-name">${esc(r.f.name)}</div><div class="food-brand">${esc(r.sub || r.f.brand || '')}</div></div>
         ${r.star ? starHTML(i, S.isFoodFav(r.f.name)) : ''}
         <div class="food-kcal">${fmt(r.f.kcal)} kcal<small>${esc(r.note || (r.f.basis === '100g' ? 'per 100 g' : 'per serve'))}</small></div>
@@ -663,18 +665,21 @@ function searchModal() {
     const mine = S.myFoods(8).map(open);
     const freq = S.frequentFoods(6).map(quick);
     const common = PLAIN.commonBasics(8).map(open);
+    const myRecipes = S.recipes().slice(0, 4).map((r) => open(S.recipeFood(r)));
     const fresh = !favs.length && !freq.length;
     paint([
       { label: 'Your favourites <span>· starred — tap to log</span>', items: favs },
+      { label: 'My recipes <span>· one tap, full meal</span>', items: myRecipes },
       { label: 'My foods <span>· scanned &amp; saved</span>', items: mine },
       { label: 'Often logged <span>· one tap re-logs it</span>', items: freq },
       { label: fresh ? 'Common foods <span>· star ✩ any food to pin it up here</span>' : 'Common foods', items: common },
     ]);
   };
 
-  const showResults = (plain, off, errMsg, mine = []) => {
+  const showResults = (plain, off, errMsg, mine = [], rec = []) => {
     paint(
       [
+        { label: 'My recipes <span>· one tap, full meal</span>', items: rec.map(open) },
         { label: 'My foods <span>· scanned &amp; saved</span>', items: mine.map(open) },
         { label: 'Plain foods <span>· typical values</span>', items: plain.map(open) },
         { label: 'Packaged &amp; branded', items: (off || []).map(open) },
@@ -684,8 +689,9 @@ function searchModal() {
     if (!results._rows.length && errMsg) results.innerHTML = `<div class="empty-state">Search is having a moment (${esc(errMsg)}).<br>Plain foods still work — try "chicken breast", "pumpkin" or "white rice".</div>`;
   };
 
-  const pending = (plain, mine = []) => paint(
+  const pending = (plain, mine = [], rec = []) => paint(
     [
+      { label: 'My recipes <span>· one tap, full meal</span>', items: rec.map(open) },
       { label: 'My foods <span>· scanned &amp; saved</span>', items: mine.map(open) },
       { label: 'Plain foods <span>· typical values</span>', items: plain.map(open) },
     ],
@@ -697,20 +703,21 @@ function searchModal() {
     if (q.length < 2) return;
     const plain = PLAIN.searchBasics(q, 6);
     const mine = S.searchMyFoods(q, 5);
+    const rec = S.searchRecipes(q, 3);
     const my = ++seq;
     if (ctrl) ctrl.abort();
-    if (cache.has(q)) { showResults(plain, cache.get(q), null, mine); return; }
+    if (cache.has(q)) { showResults(plain, cache.get(q), null, mine, rec); return; }
     ctrl = new AbortController();
-    pending(plain, mine);
+    pending(plain, mine, rec);
     try {
       const list = await OFF.searchFoods(q, 24, ctrl.signal);
       if (my !== seq) return; // a newer search is in flight
       cache.set(q, list);
       if (cache.size > 20) cache.delete(cache.keys().next().value);
-      showResults(plain, list, null, mine);
+      showResults(plain, list, null, mine, rec);
     } catch (err) {
       if (my !== seq || (err && err.name === 'AbortError')) return;
-      showResults(plain, [], err.message, mine);
+      showResults(plain, [], err.message, mine, rec);
     }
   };
   // live search as you type: plain foods filter instantly (local table),
@@ -720,7 +727,7 @@ function searchModal() {
     clearTimeout(idleTimer);
     if (!q) { showHome(); return; }
     if (q.length < 2) { results._rows = []; results.innerHTML = `<div class="empty-state">Keep typing…</div>`; return; }
-    pending(PLAIN.searchBasics(q, 6), S.searchMyFoods(q, 5));
+    pending(PLAIN.searchBasics(q, 6), S.searchMyFoods(q, 5), S.searchRecipes(q, 3));
     idleTimer = setTimeout(run, 350);
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(idleTimer); run(); } });
@@ -729,6 +736,7 @@ function searchModal() {
   btn.textContent = 'Search';
   btn.addEventListener('click', () => { clearTimeout(idleTimer); run(); });
   results.after(btn);
+  wrap.querySelector('[data-rclist]').addEventListener('click', () => { wrap.remove(); recipeListModal(); });
   showHome(); // his own foods + common foods the moment it opens
 
   wrap.addEventListener('click', (e) => {
@@ -1980,5 +1988,181 @@ function seedDemo() {
   const ws = [[45, 87.2], [42, 87.0], [38, 86.7], [34, 86.9], [31, 86.3], [27, 86.0], [24, 85.8], [20, 85.9], [17, 85.3], [13, 85.1], [10, 84.9], [7, 84.8], [4, 84.7], [2, 84.6]];
   for (const [ago, kg] of ws) S.logWeight(S.dayKey(new Date(Date.now() - ago * 864e5)), kg);
 
+  // one recipe so the builder has something to show in a demo
+  S.saveRecipe({
+    name: 'Spag bol',
+    serves: 4,
+    ing: [
+      { name: 'Beef mince, cooked', basis: '100g', qty: 500, unit: { kcal: 250, p: 25, c: 0, f: 16 } },
+      { name: 'Pasta, cooked', basis: '100g', qty: 400, unit: { kcal: 158, p: 5.8, c: 30.9, f: 0.9 } },
+      { name: 'Tomato passata', basis: '100g', qty: 500, unit: { kcal: 35, p: 1.5, c: 6, f: 0.2 } },
+      { name: 'Onion', basis: '100g', qty: 150, unit: { kcal: 40, p: 1.1, c: 9, f: 0.1 } },
+      { name: 'Olive oil', basis: '100g', qty: 20, unit: { kcal: 884, p: 0, c: 0, f: 100 } },
+    ],
+  });
+
   renderToday();
+}
+
+/* ══════════ recipes: list + builder ══════════
+   A recipe is a named list of foods with quantities and a serve count.
+   Logging one is the same portion sheet as any food — the macros are per serve,
+   derived from the ingredients, never typed in by hand. */
+function recipeListModal() {
+  const list = S.recipes();
+  const { wrap } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">My recipes</div>
+    </div>
+    ${list.length ? `<div class="rc-list">${list.map((r) => {
+      const t = S.recipeTotals(r);
+      return `<div class="rc-row">
+        <button class="rc-main" data-rcedit="${r.id}" type="button">
+          <div class="rc-name">${esc(r.name)}</div>
+          <div class="rc-sub">${r.serves} serve${r.serves > 1 ? 's' : ''} · ${fmt(t.per.kcal)} kcal a serve · ${fmt(t.total.kcal)} kcal total</div>
+        </button>
+        <button class="icon-btn rc-del" data-rcdel="${r.id}" type="button" aria-label="Delete recipe"><svg><use href="#i-x"/></svg></button>
+      </div>`;
+    }).join('')}</div>` : `<div class="empty-state">No recipes yet.<br>Build one from the foods you cook with — then it logs in a single tap.</div>`}
+    <button class="btn primary" data-rcnew type="button">＋ New recipe</button>
+  `);
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { wrap.remove(); return; }
+    if (e.target.closest('[data-rcnew]')) { wrap.remove(); recipeEditor(null); return; }
+    const edit = e.target.closest('[data-rcedit]');
+    if (edit) { wrap.remove(); recipeEditor(edit.dataset.rcedit); return; }
+    const del = e.target.closest('[data-rcdel]');
+    if (del) {
+      if (!del.dataset.armed) {
+        del.dataset.armed = '1';
+        del.classList.add('armed');
+        toast('Tap the × again to delete it');
+        return;
+      }
+      const r = S.getRecipe(del.dataset.rcdel);
+      S.removeRecipe(del.dataset.rcdel);
+      wrap.remove();
+      recipeListModal();
+      if (r) toast(`${r.name} deleted — days you already logged keep their numbers`);
+    }
+  });
+}
+
+function recipeEditor(id = null) {
+  const r = id ? S.getRecipe(id) : null;
+  const ing = r ? r.ing.map((x) => ({ ...x, unit: { ...x.unit } })) : [];
+  const unitLabel = (x) => (x.basis === '100g' ? 'g' : '× serve');
+  const factorOf = (x) => (x.basis === '100g' ? (Number(x.qty) || 0) / 100 : (Number(x.qty) || 0));
+
+  const { wrap } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">${r ? 'Edit recipe' : 'New recipe'}</div>
+    </div>
+    <div class="field"><span>Name</span><input id="rc-name" placeholder="e.g. Spag bol" autocomplete="off" value="${esc(r ? r.name : '')}"></div>
+    <div class="field"><span>Makes how many serves?</span><input id="rc-serves" type="number" inputmode="numeric" min="1" max="24" step="1" value="${r ? r.serves : 2}"></div>
+    <div class="rc-ing-head"><span>Ingredients</span><span id="rc-count">${ing.length}</span></div>
+    <div id="rc-ings"></div>
+    <div class="field rc-search"><span>Add an ingredient</span><input id="rc-q" placeholder="search your foods and plain foods…" autocomplete="off"></div>
+    <div id="rc-hits"></div>
+    <div class="rc-totals" id="rc-totals"></div>
+    <button class="btn primary" data-rcsave type="button">${r ? 'Save changes' : 'Create recipe'}</button>
+    ${r ? '<button class="link-btn rc-remove" data-rcdel type="button">Delete this recipe</button>' : ''}
+    <p class="muted sm">Per-serve numbers come from the ingredients — nothing to type. Editing a recipe only changes future logs; days already logged keep what they had.</p>
+  `);
+  const ingsEl = wrap.querySelector('#rc-ings');
+  const totEl = wrap.querySelector('#rc-totals');
+  const qEl = wrap.querySelector('#rc-q');
+  const hitsEl = wrap.querySelector('#rc-hits');
+  const nameEl = wrap.querySelector('#rc-name');
+  const servesEl = wrap.querySelector('#rc-serves');
+
+  const paintTotals = () => {
+    const t = S.recipeTotals({ serves: Number(servesEl.value) || 1, ing });
+    totEl.innerHTML = `<div class="rc-tot"><b>${fmt(t.total.kcal)}</b><span>kcal total</span></div>
+      <div class="rc-tot"><b>${fmt(t.per.kcal)}</b><span>kcal a serve</span></div>
+      <div class="rc-tot"><b>${fmt(t.per.p, 0)}P · ${fmt(t.per.c, 0)}C · ${fmt(t.per.f, 0)}F</b><span>per serve</span></div>`;
+  };
+  const paintIngs = () => {
+    ingsEl.innerHTML = ing.length ? ing.map((x, i) => `<div class="rc-ing">
+        <div class="rc-ing-main"><div class="rc-ing-name">${esc(x.name)}</div><div class="rc-ing-kcal" data-kcal="${i}">${fmt(Math.round((x.unit.kcal || 0) * factorOf(x)))} kcal</div></div>
+        <input class="rc-ing-qty" data-q="${i}" type="number" inputmode="decimal" min="0" step="${x.basis === '100g' ? 10 : 0.5}" value="${x.qty}">
+        <span class="rc-ing-unit">${unitLabel(x)}</span>
+        <button class="icon-btn rc-ing-del" data-del="${i}" type="button" aria-label="Remove"><svg><use href="#i-x"/></svg></button>
+      </div>`).join('') : '<div class="empty-state">Search below and tap a food to add it.</div>';
+    wrap.querySelector('#rc-count').textContent = ing.length;
+    paintTotals();
+  };
+  paintIngs();
+
+  // typing a quantity updates that line + the totals without re-rendering (keeps the caret)
+  ingsEl.addEventListener('input', (e) => {
+    const q = e.target.closest('[data-q]');
+    if (!q) return;
+    const i = Number(q.dataset.q);
+    const v = parseFloat(q.value);
+    if (!ing[i] || !isFinite(v) || v < 0) return;
+    ing[i].qty = v;
+    const kcalEl = ingsEl.querySelector(`[data-kcal="${i}"]`);
+    if (kcalEl) kcalEl.textContent = `${fmt(Math.round((ing[i].unit.kcal || 0) * factorOf(ing[i])))} kcal`;
+    paintTotals();
+  });
+  ingsEl.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-del]');
+    if (!del) return;
+    ing.splice(Number(del.dataset.del), 1);
+    paintIngs();
+    vib(6);
+  });
+  servesEl.addEventListener('input', paintTotals);
+
+  qEl.addEventListener('input', () => {
+    const q = qEl.value.trim();
+    if (q.length < 2) { hitsEl.innerHTML = ''; hitsEl._list = []; return; }
+    const list = [...S.searchMyFoods(q, 5), ...PLAIN.searchBasics(q, 4)];
+    hitsEl._list = list;
+    hitsEl.innerHTML = list.length ? list.map((f, i) => `<button class="food-row" data-hit="${i}" type="button">
+        <div class="food-main"><div class="food-name">${esc(f.name)}</div><div class="food-brand">${esc(f.brand || (f.basis === '100g' ? 'per 100 g' : 'per serve'))}</div></div>
+        <div class="food-kcal">${fmt(f.kcal)} kcal<small>${f.basis === '100g' ? 'per 100 g' : 'per serve'}</small></div>
+      </button>`).join('') : '<div class="empty-state">No foods match that.</div>';
+  });
+  hitsEl.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-hit]');
+    if (!b) return;
+    const f = (hitsEl._list || [])[Number(b.dataset.hit)];
+    if (!f) return;
+    const basis = f.basis === 'serve' ? 'serve' : '100g';
+    ing.push({ name: f.name, basis, qty: basis === '100g' ? 100 : 1, unit: { kcal: f.kcal || 0, p: f.p || 0, c: f.c || 0, f: f.f || 0 } });
+    qEl.value = '';
+    hitsEl.innerHTML = '';
+    hitsEl._list = [];
+    paintIngs();
+    vib(8);
+  });
+
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { wrap.remove(); return; }
+    if (e.target.closest('[data-rcsave]')) {
+      const nm = nameEl.value.trim();
+      if (!nm) { toast('Give the recipe a name first'); nameEl.focus(); return; }
+      if (!ing.length) { toast('Add at least one ingredient'); return; }
+      const saved = S.saveRecipe({ id: r ? r.id : null, name: nm, serves: Number(servesEl.value) || 1, ing });
+      if (!saved) { toast('Could not save that recipe'); return; }
+      wrap.remove();
+      const t = S.recipeTotals(saved);
+      toast(`${saved.name} saved — ${fmt(t.per.kcal)} kcal a serve`);
+      renderToday();
+      return;
+    }
+    const del = e.target.closest('[data-rcdel]');
+    if (del) {
+      if (!del.dataset.armed) { del.dataset.armed = '1'; del.textContent = 'Tap again to delete it'; return; }
+      S.removeRecipe(r.id);
+      wrap.remove();
+      toast('Recipe deleted — days you already logged keep their numbers');
+      renderToday();
+    }
+  });
+  setTimeout(() => nameEl.focus(), 120);
 }

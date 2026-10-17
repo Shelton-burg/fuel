@@ -8,7 +8,7 @@ export const DEFAULT_PROFILE = { sex: 'male', age: 38, height: 180, weight: 85, 
 export const DEFAULT_GOALS = { kcal: 2550, protein: 180, carbs: 255, fat: 71 };
 
 function fresh() {
-  return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, measures: {}, settings: {}, meta: { created: Date.now() } };
+  return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, measures: {}, recipes: {}, settings: {}, meta: { created: Date.now() } };
 }
 
 let state = load();
@@ -56,6 +56,7 @@ export function hasAnyData(st = state) {
     if (((st.settings || {}).foodFavs || []).length) return true;
     if (Object.keys(((st.settings || {}).planEdits) || {}).length) return true;
     if (Object.keys(st.measures || {}).length) return true;
+    if (Object.keys(st.recipes || {}).length) return true;
     return false;
   } catch { return true; } // in doubt: assume data exists, never clobber
 }
@@ -249,6 +250,72 @@ export function removeFood(id) {
   save();
 }
 export function recentFoods(n = 8) { return myFoods(n); }
+
+/* ── recipes: a home-cooked meal built from foods, logged by the serve ──
+   An ingredient stores the food's per-100 g (or per-serve) values and the
+   quantity used, so editing a recipe re-computes cleanly and past log entries
+   keep the numbers they were logged with. */
+const r0 = (v) => Math.round((Number(v) || 0));
+const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
+
+export function recipes() {
+  return Object.values(state.recipes || {}).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+}
+export function getRecipe(id) { return (state.recipes || {})[id] || null; }
+export function saveRecipe(r) {
+  if (!r || !String(r.name || '').trim()) return null;
+  state.recipes = state.recipes || {};
+  const id = r.id && state.recipes[r.id] ? r.id : 'r' + Date.now() + Math.random().toString(36).slice(2, 5);
+  const ing = (r.ing || []).filter((x) => x && x.name).map((x) => ({
+    name: String(x.name).trim(),
+    basis: x.basis === 'serve' ? 'serve' : '100g',
+    qty: Math.max(0.1, Number(x.qty) || 1),
+    unit: { kcal: r0(x.unit && x.unit.kcal), p: r1(x.unit && x.unit.p), c: r1(x.unit && x.unit.c), f: r1(x.unit && x.unit.f) },
+  }));
+  state.recipes[id] = { id, name: String(r.name).trim(), serves: Math.max(1, Math.round(Number(r.serves) || 1)), ing, ts: Date.now() };
+  save();
+  return state.recipes[id];
+}
+export function removeRecipe(id) {
+  if (!state.recipes || !state.recipes[id]) return;
+  delete state.recipes[id];
+  save();
+}
+export function recipeTotals(r) {
+  const t = { kcal: 0, p: 0, c: 0, f: 0 };
+  for (const x of (r && r.ing) || []) {
+    const f = x.basis === '100g' ? (x.qty || 0) / 100 : (x.qty || 0);
+    t.kcal += ((x.unit && x.unit.kcal) || 0) * f;
+    t.p += ((x.unit && x.unit.p) || 0) * f;
+    t.c += ((x.unit && x.unit.c) || 0) * f;
+    t.f += ((x.unit && x.unit.f) || 0) * f;
+  }
+  const serves = Math.max(1, (r && r.serves) || 1);
+  return {
+    total: { kcal: r0(t.kcal), p: r1(t.p), c: r1(t.c), f: r1(t.f) },
+    per: { kcal: r0(t.kcal / serves), p: r1(t.p / serves), c: r1(t.c / serves), f: r1(t.f / serves) },
+  };
+}
+/** the recipe as something the add-food sheet can log: macros per serve */
+export function recipeFood(r) {
+  const t = recipeTotals(r);
+  return {
+    id: 'recipe:' + r.id,
+    recipeId: r.id,
+    isRecipe: true,
+    name: r.name,
+    brand: 'My recipe',
+    basis: 'serve',
+    kcal: t.per.kcal, p: t.per.p, c: t.per.c, f: t.per.f,
+    servingLabel: `1 of ${r.serves}`,
+    source: 'recipe',
+  };
+}
+export function searchRecipes(q, n = 4) {
+  const t = String(q || '').toLowerCase().trim();
+  if (!t) return [];
+  return recipes().filter((r) => String(r.name || '').toLowerCase().includes(t)).slice(0, n).map(recipeFood);
+}
 
 /* ── my version of a program day (swap / add / remove / reorder) ── */
 export function planEdits() { return (state.settings || {}).planEdits || {}; }

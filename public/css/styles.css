@@ -803,3 +803,28 @@ button.stat-chip:active { transform:scale(.96); }
 .plate-total { font-size:12.5px; color:var(--muted); }
 .sp-plates { margin-left:auto; }
 #prog-tabs .chip { padding-left:7px; padding-right:7px; font-size:12.5px; } /* five tabs must fit 390px without scrolling */
+
+/* ── recipes ─────────────────────────────────────────────────────────────── */
+.rc-head-btn { margin-left:auto; font-size:12.5px; }
+.food-thumb.ph.amber { color:var(--amber); background:rgba(255,161,23,.12); }
+.rc-list { display:flex; flex-direction:column; gap:8px; margin:4px 0 12px; }
+.rc-row { display:flex; align-items:center; gap:8px; background:var(--bg-2); border:1px solid var(--line); border-radius:14px; padding:10px 10px 10px 12px; }
+.rc-main { flex:1; min-width:0; text-align:left; background:none; border:0; color:inherit; font:inherit; padding:0; }
+.rc-name { font-weight:600; font-size:14px; }
+.rc-sub { font-size:11.5px; color:var(--muted); margin-top:2px; }
+.rc-del.armed { color:#ff6b6b; }
+.rc-ing-head { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin:14px 0 6px; text-transform:uppercase; letter-spacing:.04em; }
+.rc-ing { display:grid; grid-template-columns:1fr 70px auto 32px; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); }
+.rc-ing-main { min-width:0; }
+.rc-ing-name { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rc-ing-kcal { font-size:11px; color:var(--muted); }
+.rc-ing-qty { width:100%; text-align:right; background:transparent; border:1px solid rgba(255,255,255,.22); border-radius:9px; padding:7px 8px; color:inherit; font-family:var(--font-num); font-size:13px; }
+.rc-ing-qty:focus { border-color:var(--amber); outline:none; }
+.rc-ing-unit { font-size:11.5px; color:var(--muted); min-width:44px; }
+.rc-ing-del { width:32px; height:32px; }
+.rc-totals { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:14px 0 12px; }
+.rc-tot { background:var(--bg-2); border:1px solid var(--line); border-radius:12px; padding:9px 8px; text-align:center; }
+.rc-tot b { display:block; font-family:var(--font-num); font-size:14px; }
+.rc-tot span { font-size:10.5px; color:var(--muted); }
+.rc-remove { display:block; margin:10px auto 0; color:#ff8f8f; }
+.rc-search { margin-top:14px; }
