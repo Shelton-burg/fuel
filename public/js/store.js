@@ -8,7 +8,7 @@ export const DEFAULT_PROFILE = { sex: 'male', age: 38, height: 180, weight: 85, 
 export const DEFAULT_GOALS = { kcal: 2550, protein: 180, carbs: 255, fat: 71 };
 
 function fresh() {
-  return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, settings: {}, meta: { created: Date.now() } };
+  return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, measures: {}, settings: {}, meta: { created: Date.now() } };
 }
 
 let state = load();
@@ -55,6 +55,7 @@ export function hasAnyData(st = state) {
     if (((st.settings || {}).usuals || []).length) return true;
     if (((st.settings || {}).foodFavs || []).length) return true;
     if (Object.keys(((st.settings || {}).planEdits) || {}).length) return true;
+    if (Object.keys(st.measures || {}).length) return true;
     return false;
   } catch { return true; } // in doubt: assume data exists, never clobber
 }
@@ -223,16 +224,24 @@ export function saveFood(f) {
   return id;
 }
 export function getFood(id) { return (state.foods || {})[id]; }
+/* hide duplicates left over from the scans before de-duping existed — non-destructive */
+function collapseFoods(list) {
+  const seen = new Set();
+  const out = [];
+  for (const f of list.slice().sort((a, b) => (b.ts || 0) - (a.ts || 0))) {
+    const k = f.barcode ? 'bc:' + String(f.barcode) : 'nm:' + String(f.name || '').toLowerCase().trim() + '|' + String(f.brand || '').toLowerCase().trim();
+    if (seen.has(k)) continue;
+    seen.add(k); out.push(f);
+  }
+  return out;
+}
 export function myFoods(n = 10) {
-  return Object.values(state.foods || {}).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, n);
+  return collapseFoods(Object.values(state.foods || {})).slice(0, n);
 }
 export function searchMyFoods(q, n = 5) {
   const t = String(q || '').toLowerCase().trim();
   if (!t) return [];
-  return Object.values(state.foods || {})
-    .filter((f) => `${f.name || ''} ${f.brand || ''}`.toLowerCase().includes(t))
-    .sort((a, b) => (b.ts || 0) - (a.ts || 0))
-    .slice(0, n);
+  return collapseFoods(Object.values(state.foods || {}).filter((f) => `${f.name || ''} ${f.brand || ''}`.toLowerCase().includes(t))).slice(0, n);
 }
 export function removeFood(id) {
   if (!state.foods || !state.foods[id]) return;
@@ -384,6 +393,33 @@ export function latestWeight() {
   const k = keys[keys.length - 1];
   return { key: k, kg: state.weights[k] };
 }
+/* ── body measurements (cm) ── */
+export const MEASURE_FIELDS = [['waist', 'Waist'], ['hips', 'Hips'], ['chest', 'Chest'], ['arm', 'Arm'], ['thigh', 'Thigh']];
+export function logMeasure(key, obj) {
+  state.measures = state.measures || {};
+  const clean = {};
+  for (const [k] of MEASURE_FIELDS) {
+    const v = Number(obj && obj[k]);
+    if (isFinite(v) && v > 0) clean[k] = Math.round(v * 10) / 10;
+  }
+  if (!Object.keys(clean).length) return null;
+  state.measures[key] = { ...(state.measures[key] || {}), ...clean, ts: Date.now() };
+  save();
+  return state.measures[key];
+}
+export function getMeasure(key) { return (state.measures || {})[key] || null; }
+export function measureSeries(field) {
+  return Object.entries(state.measures || {})
+    .filter(([, m]) => m && m[field] > 0)
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([key, m]) => ({ key, v: m[field] }));
+}
+export function latestMeasure() {
+  const keys = Object.keys(state.measures || {}).sort();
+  for (let i = keys.length - 1; i >= 0; i--) if (state.measures[keys[i]]) return { key: keys[i], ...state.measures[keys[i]] };
+  return null;
+}
+
 export function weightSeries() {
   return Object.entries(state.weights || {})
     .sort((a, b) => (a[0] < b[0] ? -1 : 1))

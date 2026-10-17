@@ -362,8 +362,8 @@ function exSeries(name, finAsc) {
 function progressHTML(p) {
   const fin = finishedSessions();
   const asc = fin.slice().reverse();
-  const TAB_META = { volume: 'Volume', strength: 'Strength', weight: 'Weight', bests: 'Bests' };
-  const tabs = ['volume', 'strength', 'weight', 'bests']
+  const TAB_META = { volume: 'Volume', muscles: 'Muscles', strength: 'Strength', weight: 'Weight', bests: 'Bests' };
+  const tabs = ['volume', 'muscles', 'strength', 'weight', 'bests']
     .map((id) => `<button class="chip${ui.progTab === id ? ' sel' : ''}" data-tab="${id}" type="button">${TAB_META[id]}</button>`)
     .join('');
 
@@ -407,6 +407,8 @@ function progressHTML(p) {
       ? `<div class="panel"><h2 class="ph2">Personal bests</h2>${rows}</div>
         <p class="muted sm" style="padding:2px 6px 0">Best set per lift from your logged workouts — ✦ = set in the last 14 days. Tap one for its trend.</p>`
       : `<div class="panel"><div class="empty-state">Log some sets and your bests land here.</div></div>`;
+  } else if (ui.progTab === 'muscles') {
+    body = musclesHTML();
   } else {
     const series = S.weightSeries();
     const latest = series.length ? series[series.length - 1] : null;
@@ -418,13 +420,13 @@ function progressHTML(p) {
         <div class="prog-delta ${d === null || d <= 0 ? 'down' : 'up'}" id="prog-wt-delta">${d === null ? `logged ${S.fmtDate(latest.key)}` : `${d >= 0 ? '+' : ''}${d} kg in 30 days`}</div></div>
         <div class="panel chart-panel"><canvas id="prog-weight" class="prog-canvas" height="150"></canvas>
         <div class="chart-legend"><span class="muted">Your weigh-ins</span><span class="muted">tap the weight chip on Today to log</span></div></div>
-        ${photoPanelHTML()}`
+        ${measHTML()}${photoPanelHTML()}`
       : `<div class="panel"><div class="empty-state">No weigh-ins yet.<br>Tap the weight chip on the Today screen to log one.</div></div>
-        ${photoPanelHTML()}`;
+        ${measHTML()}${photoPanelHTML()}`;
   }
   return `<div class="page-head"><h1>Progress</h1><p class="muted">${esc(p.name)}</p></div>
     <button class="link-btn" data-act="back" type="button">← Back</button>
-    <div class="chip-row seg" id="prog-tabs" style="margin-top:10px">${tabs}</div>
+    <div class="chip-row seg scroll" id="prog-tabs" style="margin-top:10px">${tabs}</div>
     ${body}`;
 }
 
@@ -530,7 +532,8 @@ function sessionHTML(p, s) {
         <button class="btn-primary sm" data-act="finish" type="button">${doneAll ? 'Finish ✓' : 'Finish'}</button>
       </div>
     </div>
-    <div class="sess-prog"><div class="sp-bar"><i style="width:${Math.round((stats.sets / stats.total) * 100)}%"></i></div><span class="sp-txt">${stats.sets} / ${stats.total} sets · ${stats.vol.toLocaleString()} kg</span></div>
+    <div class="sess-prog"><div class="sp-bar"><i style="width:${Math.round((stats.sets / stats.total) * 100)}%"></i></div><span class="sp-txt">${stats.sets} / ${stats.total} sets · ${stats.vol.toLocaleString()} kg</span>
+      <button class="link-btn sp-plates" data-act="plates" type="button">Plates</button></div>
     ${cards}`;
 }
 
@@ -574,6 +577,8 @@ document.addEventListener('click', (e) => {
       return;
     }
     if (a === 'progress') { ui.mode = 'progress'; renderTrain(); return; }
+    if (a === 'plates') { plateModal(); return; }
+    if (a === 'meas') { measureModal(); return; }
     if (a === 'wu') { const s2 = todaySession(); if (s2) { const ex2 = s2.ex[+act.dataset.ex]; ex2.wuOpen = !ex2.wuOpen; S.putSession(K(), s2); renderTrain(); } return; }
     if (a === 'wutick') { const s3 = todaySession(); if (s3) { const ex3 = s3.ex[+act.dataset.ex]; ex3.wu = ex3.wu || []; const wi = +act.dataset.wi; ex3.wu[wi] = !ex3.wu[wi]; S.putSession(K(), s3); renderTrain(); } return; }
     if (a === 'log') { const row = act.closest('.setrow'); logSet(+row.dataset.ex, +row.dataset.set); return; }
@@ -831,6 +836,149 @@ function openExSheet(mode, ei, dayId) {
   });
   input.addEventListener('input', () => paint(input.value));
   setTimeout(() => input.focus(), 120);
+}
+
+
+/* ══════════ weekly sets per muscle + deload signal ══════════ */
+const MUSCLE_ORDER = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hams & Glutes', 'Calves', 'Core', 'Other'];
+const MUSCLE_TARGET = 10; // working sets per muscle per week
+
+function weekStartKey(offsetWeeks = 0) {
+  const x = new Date();
+  x.setHours(0, 0, 0, 0);
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7) - offsetWeeks * 7); // week starts Monday
+  return S.dayKey(x);
+}
+function weekSets(offsetWeeks = 0) {
+  const startKey = weekStartKey(offsetWeeks);
+  const endD = new Date(startKey + 'T12:00:00');
+  endD.setDate(endD.getDate() + 7);
+  const endKey = S.dayKey(endD);
+  const out = {};
+  for (const [key, ses] of Object.entries(S.getState().workouts || {})) {
+    if (key < startKey || key >= endKey) continue;
+    for (const ex of ses.ex || []) {
+      const n = (ex.sets || []).filter((st) => st.done).length;
+      if (!n) continue;
+      const g = exGroup(ex.name) || 'Other';
+      out[g] = (out[g] || 0) + n;
+    }
+  }
+  return out;
+}
+/* the last time any lift set a new best estimated 1RM */
+function lastPrKey() {
+  const hist = finishedSessions().slice().sort((a, b) => (a.key < b.key ? -1 : 1));
+  const best = {};
+  let last = null;
+  for (const h of hist) for (const ex of h.ex || []) for (const st of ex.sets || []) {
+    if (!st.done || !st.w || !st.r) continue;
+    const e1 = st.w * (1 + st.r / 30);
+    // the first time a lift is logged only sets the baseline — it is not progress
+    if (!best[ex.name]) { best[ex.name] = e1; continue; }
+    if (e1 > best[ex.name] + 0.01) { best[ex.name] = e1; last = h.key; }
+  }
+  return last;
+}
+function deloadHTML() {
+  const totals = [0, 1, 2].map((o) => Object.values(weekSets(o)).reduce((a, b) => a + b, 0));
+  const busy = totals.every((v) => v >= 30);
+  const pr = lastPrKey();
+  const stale = !pr || Date.now() - new Date(pr + 'T12:00:00').getTime() > 21 * 864e5;
+  if (!busy || !stale) return '';
+  return `<div class="panel deload-note"><b>⏬ A lighter week may be due</b><p class="muted sm">Three weeks at 30+ sets with no new best in 21 days. Drop one set per exercise for a week and keep the weights — that is the deload.</p></div>`;
+}
+function musclesHTML() {
+  const wk = weekSets(0), lw = weekSets(1);
+  const total = Object.values(wk).reduce((a, b) => a + b, 0);
+  const totalLw = Object.values(lw).reduce((a, b) => a + b, 0);
+  const groups = MUSCLE_ORDER.filter((g) => wk[g] || lw[g] || ['Chest', 'Back', 'Shoulders', 'Quads', 'Hams & Glutes'].includes(g));
+  const max = Math.max(20, ...Object.values(wk), ...Object.values(lw));
+  const rows = groups.map((g) => {
+    const v = wk[g] || 0, prev = lw[g] || 0;
+    return `<div class="mg-row${v >= MUSCLE_TARGET ? ' ok' : ' low'}">
+      <span class="mg-name">${esc(g)}</span>
+      <span class="mg-bar"><i style="width:${Math.round((v / max) * 100)}%"></i><span class="mg-tgt" style="left:${Math.round((MUSCLE_TARGET / max) * 100)}%"></span></span>
+      <span class="mg-n">${v}${prev ? `<i> / ${prev}</i>` : ''}</span>
+    </div>`;
+  }).join('');
+  return `<div class="prog-stats"><div><b>${total}</b><span>sets this week</span></div><div><b>${totalLw}</b><span>last week</span></div><div><b>${Object.keys(wk).length}</b><span>muscles trained</span></div></div>
+    <div class="panel"><h2 class="ph2">Sets per muscle · this week</h2>${rows}
+      <div class="mg-legend"><span>│ target ${MUSCLE_TARGET} sets</span><span>this week / last week</span></div></div>
+    ${deloadHTML()}
+    <p class="muted sm" style="padding:2px 6px 0">10–20 working sets per muscle per week is the range that holds size on a deficit. Counts come from your logged sets only.</p>`;
+}
+
+/* ══════════ body measurements ══════════ */
+function measHTML() {
+  const lm = S.latestMeasure();
+  const cells = lm ? S.MEASURE_FIELDS.filter(([k]) => lm[k]).map(([k, l]) => `<div class="meas-cell"><b>${fmtN(lm[k], 1)}</b><span>${l} cm</span></div>`).join('') : '';
+  return `<div class="panel"><h2 class="ph2">Measurements</h2>
+    ${lm ? `<div class="meas-grid">${cells}</div><p class="muted sm">Last logged ${S.fmtDate(lm.key)}</p>` : '<p class="muted sm">Waist is the honest signal when the scale stalls. Log a tape measure once a fortnight.</p>'}
+    <button class="btn" data-act="meas" type="button">${lm ? 'Update measurements' : 'Add measurements'}</button></div>`;
+}
+
+/* ══════════ plate calculator ══════════ */
+const BAR_KG = 20;
+const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+function plateResultHTML(w) {
+  if (!(w > 0)) return '<div class="empty-state">Enter a weight.</div>';
+  if (w < BAR_KG) return `<div class="empty-state">${fmtN(w, 1)} kg is lighter than the bar (${BAR_KG} kg).</div>`;
+  const per = Math.round(((w - BAR_KG) / 2) * 100) / 100;
+  let left = per;
+  const out = [];
+  for (const pl of PLATES) while (left + 1e-9 >= pl) { out.push(pl); left = Math.round((left - pl) * 1000) / 1000; }
+  const chips = out.length ? out.map((pl) => `<span class="plate">${pl}</span>`).join('<span class="plus">+</span>') : '<span class="muted">empty bar</span>';
+  const short = left > 0.01 ? `<div class="muted sm">Can't make the last ${Math.round(left * 100) / 100} kg per side with 25 / 20 / 15 / 10 / 5 / 2.5 / 1.25 plates.</div>` : '';
+  return `<div class="plate-out"><div class="plate-per">${fmtN(per, 2)} kg per side</div><div class="plate-chips">${chips}</div>${short}
+    <div class="plate-total">Bar ${BAR_KG} kg + 2 × ${fmtN(per, 2)} = <b>${fmtN(w, 1)} kg</b></div></div>`;
+}
+function openLocalModal(html) {
+  const back = document.createElement('div');
+  back.className = 'modal-backdrop';
+  back.innerHTML = `<div class="modal">${html}</div>`;
+  document.body.appendChild(back);
+  back.addEventListener('click', (e) => { if (e.target === back || e.target.closest('[data-close]')) back.remove(); });
+  return { back, close: () => back.remove() };
+}
+function plateModal() {
+  const s = todaySession();
+  let start = 60;
+  if (s) {
+    const t = s.ex.map((ex) => S.nextTarget(ex.name, ex.reps)?.w).find((w) => w > 0);
+    if (t) start = t;
+  }
+  const { back } = openLocalModal(`
+    <div class="modal-head"><button class="icon-btn" data-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button><div class="modal-title">Plate calculator</div></div>
+    <div class="field"><span>Weight on the bar (kg)</span><input id="pl-w" type="number" inputmode="decimal" step="0.5" min="0" value="${start}"></div>
+    <div id="pl-out"></div>
+  `);
+  const out = back.querySelector('#pl-out');
+  const inp = back.querySelector('#pl-w');
+  const paint = () => { out.innerHTML = plateResultHTML(Number(inp.value)); };
+  inp.addEventListener('input', paint);
+  paint();
+  setTimeout(() => { inp.focus(); inp.select(); }, 120);
+}
+function measureModal() {
+  const cur = S.getMeasure(S.dayKey()) || S.latestMeasure() || {};
+  const { back } = openLocalModal(`
+    <div class="modal-head"><button class="icon-btn" data-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button><div class="modal-title">Measurements</div></div>
+    <p class="muted sm" style="margin-top:0">Tape measure, in cm. Once a fortnight is plenty.</p>
+    <div class="meas-form">${S.MEASURE_FIELDS.map(([k, l]) => `<label class="field"><span>${l} (cm)</span><input data-mf="${k}" type="number" inputmode="decimal" step="0.5" value="${cur[k] ?? ''}"></label>`).join('')}</div>
+    <button class="btn-primary wide" data-msave type="button">Save measurements</button>
+  `);
+  back.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-msave]')) return;
+    const obj = {};
+    for (const el of back.querySelectorAll('[data-mf]')) obj[el.dataset.mf] = el.value;
+    const saved = S.logMeasure(S.dayKey(), obj);
+    if (!saved) { toastT('Enter at least one measurement'); return; }
+    back.remove();
+    toastT('Measurements saved');
+    renderTrain();
+  });
+  setTimeout(() => back.querySelector('input')?.focus(), 120);
 }
 
 trainBoot();
