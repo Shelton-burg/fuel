@@ -338,6 +338,36 @@ export function lastSetsFor(exName, excludeKey) {
   }
   return null;
 }
+/* ── progression: what to aim for next time ──
+   Double progression: beat the top of the rep range on the best set and the weight goes up
+   (back to the bottom of the range at the new weight); otherwise the same weight, one more rep.
+   Pure arithmetic on his own logged sets — no guessing, no AI. */
+export function lastWorkingSets(name, excludeKey) {
+  const ws = state.workouts || {};
+  const keys = Object.keys(ws).filter((k) => k !== excludeKey).sort().reverse();
+  for (const k of keys) {
+    const ex = (ws[k].ex || []).find((e) => e.name === name);
+    if (!ex) continue;
+    const done = (ex.sets || []).filter((st) => st.done && st.w > 0);
+    if (done.length) return { date: k, sets: done.map((st) => ({ w: st.w, r: st.r || 0 })) };
+  }
+  return null;
+}
+export function nextTarget(name, repsTarget, excludeKey) {
+  const last = lastWorkingSets(name, excludeKey);
+  if (!last) return null;
+  const best = last.sets.reduce((a, b) => (b.w > a.w || (b.w === a.w && b.r > a.r) ? b : a), last.sets[0]);
+  const m = String(repsTarget == null ? '' : repsTarget).match(/(\d+)\s*-\s*(\d+)/);
+  const lo = m ? Number(m[1]) : Number((String(repsTarget).match(/\d+/) || [0])[0]) || 0;
+  const hi = m ? Number(m[2]) : lo;
+  if (hi <= 0) return null;
+  const step = best.w >= 100 ? 5 : 2.5;
+  if (best.r >= hi) {
+    return { w: Math.round((best.w + step) * 10) / 10, r: lo, from: { w: best.w, rep: best.r, date: last.date }, why: 'beat the top of the range — add weight' };
+  }
+  return { w: best.w, r: Math.min(hi, best.r + 1), from: { w: best.w, rep: best.r, date: last.date }, why: 'same weight — one more rep' };
+}
+
 /* ── body weight log ── */
 export function logWeight(key, kg) {
   state.weights = state.weights || {};

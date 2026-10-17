@@ -482,24 +482,26 @@ function sessionHTML(p, s) {
     const exDone = ex.sets.every((st) => st.done);
     const isActive = !exDone && ex.sets.some((st) => !st.done) && s.ex.slice(0, ei).every((e) => e.sets.every((st) => st.done));
     const lbl = S.lastSetsFor(ex.name);
+    const tgt = S.nextTarget(ex.name, ex.reps); // what to aim for today, from his own last session
     let prevW = null;
     const rows = ex.sets.map((st, si) => {
       const isCur = isActive && !st.done && ex.sets.slice(0, si).every((x) => x.done);
-      const wVal = st.w ?? (prevW ?? lbl?.lastW ?? '');
+      const wVal = st.w ?? (prevW ?? tgt?.w ?? lbl?.lastW ?? '');
       const rVal = st.r ?? '';
       if (st.done) prevW = st.w;
       return `<div class="setrow${st.done ? ' done' : ''}${isCur ? ' cur' : ''}" data-ex="${ei}" data-set="${si}">
         <span class="sr-n">${si + 1}</span>
         <span class="sr-target">${esc(String(ex.reps))}</span>
         <input class="sr-in" data-k="w" type="number" inputmode="decimal" step="0.5" min="0" placeholder="${st.done ? '' : (lbl?.lastW ?? 'kg')}" value="${st.done ? st.w : wVal}" ${st.done ? 'disabled' : ''}>
-        <input class="sr-in" data-k="r" type="number" inputmode="numeric" step="1" min="0" placeholder="${st.done ? '' : ex.reps.split('-')[0]}" value="${st.done ? st.r : rVal}" ${st.done ? 'disabled' : ''}>
+        <input class="sr-in" data-k="r" type="number" inputmode="numeric" step="1" min="0" placeholder="${st.done ? '' : (tgt?.r ?? ex.reps.split('-')[0])}" value="${st.done ? st.r : rVal}" ${st.done ? 'disabled' : ''}>
         <button class="sr-go${st.done ? ' on' : ''}" data-act="${st.done ? 'unlog' : 'log'}" type="button" aria-label="log set">${st.done ? '✓' : '✓'}</button>
       </div>`;
     }).join('');
     return `<div class="panel excard${isActive ? ' active' : ''}${exDone ? ' done' : ''}">
       <div class="ex-head">
         <div><span class="ex-title">${esc(ex.name)}</span>
-        <span class="ex-sub">${ex.sets.length} × ${esc(ex.reps)} · rest ${fmtRest(ex.rest)} between sets</span></div>
+        <span class="ex-sub">${ex.sets.length} × ${esc(ex.reps)} · rest ${fmtRest(ex.rest)} between sets</span>
+        ${tgt ? `<span class="ex-target">Next: <b>${fmtN(tgt.w, 1)} kg × ${tgt.r}</b> <i>· last ${fmtN(tgt.from.w, 1)} kg × ${tgt.from.rep}</i></span>` : ''}</div>
         <span class="ex-head-r">${exDone ? '<span class="ex-done-chip">Done ✓</span>' : ''}
         <button class="ex-swap" data-act="exs" data-ex="${ei}" type="button" aria-label="Change ${esc(ex.name)}"><svg><use href="#i-edit"/></svg></button>
         <button class="star-btn${S.isFavEx(ex.name) ? ' on' : ''}" data-act="fav" data-ex="${esc(ex.name)}" type="button" aria-label="Favourite ${esc(ex.name)}"><svg><use href="#i-star"/></svg></button></span>
