@@ -48,6 +48,13 @@
 
 <div id="app">
 
+  <!-- ══ UPDATE READY ══ -->
+  <div class="update-bar" id="update-bar" hidden>
+    <span class="ub-txt">New version ready</span>
+    <button class="ub-btn" id="update-reload" type="button">Reload</button>
+    <button class="ub-later" id="update-later" type="button">Later</button>
+  </div>
+
   <!-- ══ TOP BAR ══ -->
   <header class="topbar">
     <div class="brand"><svg class="flame"><use href="#i-flame"/></svg><span>FUEL</span></div>
@@ -231,7 +238,8 @@
         <button class="btn danger" id="btn-reset" type="button">Reset everything</button>
       </div>
 
-      <p class="app-foot muted">FUEL v0.1 · data stays on your device</p>
+      <p class="app-foot muted" id="app-foot">FUEL · data stays on your device</p>
+      <button class="link-btn app-check" id="btn-check-update" type="button">Check for updates</button>
     </section>
 
     <!-- ══ GOALS & COACH ══ -->

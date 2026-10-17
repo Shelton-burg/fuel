@@ -27,8 +27,21 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
+const APP_BUILD = 'v20';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  // false on a first-ever install: that worker's clients.claim() is not an "update"
+  let swControlled = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // a NEW worker took over this open page — the page itself is still the old build
+    if (!swControlled) { swControlled = true; return; }
+    const bar = $('#update-bar');
+    if (bar) { bar.hidden = false; }
+  });
+  const checkForUpdate = () => navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+  // returning to the app is the moment an update should land, not a day later
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(); });
+  window.__fuelCheckUpdate = checkForUpdate;
 }
 const DEMO = new URLSearchParams(location.search).get('demo') === '1';
 if (DEMO) seedDemo();
@@ -1581,7 +1594,7 @@ function buildNudge(now = new Date()) {
 window.__fuelNudge = (iso) => { try { const n = buildNudge(new Date(iso)); return n ? n.txt : null; } catch { return null; } };
 
 /* ══════════ cloud backup (Settings) ══════════ */
-fetch('/api/health').then((r) => r.json()).then((h) => { health = h || health; }).catch(() => {});
+fetch('/api/health').then((r) => r.json()).then((h) => { health = h || health; paintAppFoot(); }).catch(() => {});
 
 function renderSyncPanel() {
   const el = $('#sync-body');
@@ -2425,3 +2438,20 @@ document.addEventListener('click', (e) => {
     applyCoachAction(a);
   }
 });
+
+/* ══════════ version line + update bar ══════════ */
+function paintAppFoot() {
+  const el = $('#app-foot');
+  if (!el) return;
+  const build = health && health.build ? ` · ${health.build}` : '';
+  el.textContent = `FUEL ${APP_BUILD}${build} · data stays on your device`;
+}
+$('#update-reload')?.addEventListener('click', () => location.reload());
+$('#update-later')?.addEventListener('click', () => { const bar = $('#update-bar'); if (bar) bar.hidden = true; }); // the new version still lands next launch
+$('#btn-check-update')?.addEventListener('click', async () => {
+  const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration().catch(() => null) : null;
+  if (!reg) { toast('This device has no cached copy to update'); return; }
+  await reg.update().catch(() => {});
+  toast('Checked for a new version');
+});
+paintAppFoot();
