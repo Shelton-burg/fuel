@@ -3,7 +3,7 @@
 // next set. After the final set of an exercise there's a longer transition countdown before the
 // next exercise. +30 s and Skip buttons on every rest. Screen stays awake during a session.
 import * as S from './store.js';
-import { PROGRAMS, PROGRAM_LIST, dayIdFor, nextDayIdFor } from './programs.js';
+import { PROGRAMS, PROGRAM_LIST, dayIdFor, nextDayIdFor, EX_LIB, exGroup, exMeta } from './programs.js';
 import * as CH from './charts.js';
 import { photoPanelHTML, renderPhotoStrip } from './photos.js';
 
@@ -64,10 +64,11 @@ function todaySession() { return S.getSession(K()); }
 
 function buildSession(p, dayId) {
   const d = p.days[dayId];
+  const list = S.planFor(p.id, dayId, d.exercises); // the user's version of this day
   return {
     programId: p.id, programName: p.name, dayId, dayLabel: d.label,
     startedAt: Date.now(), finishedAt: null, timer: null,
-    ex: d.exercises.map((x) => ({
+    ex: list.map((x) => ({
       name: x.name, reps: x.reps, rest: x.rest,
       sets: Array.from({ length: x.sets }, () => ({ w: null, r: null, done: false, ts: null })),
     })),
@@ -289,16 +290,19 @@ function homeHTML(p, s) {
     </div>`;
   } else {
     const nxt = nextDayIdFor();
+    const editDay = dayId || nxt.id;
     const label = dayId ? p.days[dayId].label : `${p.days[nxt.id].label} (next up)`;
-    const active = dayId ? p.days[dayId].exercises : p.days[nxt.id].exercises;
-    const exList = active.map((x, i) => `<div class="ex-li"><span class="ex-n">${i + 1}</span><span class="ex-name">${esc(x.name)}</span><span class="ex-sr">${x.sets} × ${esc(x.reps)}</span><span class="ex-rest">${fmtRest(x.rest)}</span></div>`).join('');
+    const active = S.planFor(p.id, editDay, p.days[editDay].exercises);
+    const custom = S.planCustomised(p.id, editDay);
+    const exList = active.map((x, i) => `<button class="ex-li" data-ex-edit="${i}" data-day="${editDay}" type="button"><span class="ex-n">${i + 1}</span><span class="ex-name">${esc(x.name)}</span><span class="ex-sr">${x.sets} × ${esc(x.reps)}</span><span class="ex-rest">${fmtRest(x.rest)}</span><svg class="ex-edit-ico"><use href="#i-edit"/></svg></button>`).join('');
     today = `<div class="panel tcard">
       <div class="tc-head">
         <span class="tc-day">${dayId ? 'Today' : 'Rest day'} · ${esc(label)}</span>
-        ${dayId ? '' : '<span class="tc-rest">Recovery day 😴</span>'}
+        ${dayId ? (custom ? '<span class="tc-rest">edited</span>' : '') : '<span class="tc-rest">Recovery day 😴</span>'}
       </div>
       <div class="ex-list">${exList}</div>
-      <div class="tc-note muted sm">Sets × reps · rest time between sets shown on the right</div>
+      <button class="btn-ghost add-ex" data-ex-add="1" data-day="${editDay}" type="button">+ Add exercise</button>
+      <div class="tc-note muted sm">Tap any exercise to swap it out · rest time shown on the right</div>
       ${s && !s.finishedAt
         ? `<button class="btn-primary wide" data-act="resume" type="button">Resume workout (${stats.sets}/${stats.total} sets)</button>`
         : `<button class="btn-primary wide" data-act="start" data-day="${dayId || nxt.id}" type="button">${dayId ? 'Start workout' : 'Train anyway'}</button>`}
@@ -497,6 +501,7 @@ function sessionHTML(p, s) {
         <div><span class="ex-title">${esc(ex.name)}</span>
         <span class="ex-sub">${ex.sets.length} × ${esc(ex.reps)} · rest ${fmtRest(ex.rest)} between sets</span></div>
         <span class="ex-head-r">${exDone ? '<span class="ex-done-chip">Done ✓</span>' : ''}
+        <button class="ex-swap" data-act="exs" data-ex="${ei}" type="button" aria-label="Change ${esc(ex.name)}"><svg><use href="#i-edit"/></svg></button>
         <button class="star-btn${S.isFavEx(ex.name) ? ' on' : ''}" data-act="fav" data-ex="${esc(ex.name)}" type="button" aria-label="Favourite ${esc(ex.name)}"><svg><use href="#i-star"/></svg></button></span>
       </div>
       <div class="setrow head"><span class="sr-n">Set</span><span class="sr-target">Reps</span><span class="sr-in-head">kg</span><span class="sr-in-head">reps</span><span></span></div>
@@ -532,6 +537,10 @@ document.addEventListener('click', (e) => {
   const t = e.target;
   const pick = t.closest('[data-pick]');
   if (pick) { pickProgram(pick.dataset.pick); return; }
+  const exEdit = t.closest('[data-ex-edit]');
+  if (exEdit) { openExSheet('swap', +exEdit.dataset.exEdit, exEdit.dataset.day); return; }
+  const exAdd = t.closest('[data-ex-add]');
+  if (exAdd) { openExSheet('add', null, exAdd.dataset.day); return; }
   if (ui.mode === 'progress') {
     const tab = t.closest('[data-tab]');
     if (tab) { ui.progTab = tab.dataset.tab; renderTrain(); return; }
@@ -555,6 +564,13 @@ document.addEventListener('click', (e) => {
     if (a === 'discard') { discardSession(act); return; }
     if (a === 'chgprog') { ui.mode = 'picker'; renderTrain(); return; }
     if (a === 'back') { ui.mode = 'auto'; renderTrain(); return; }
+    if (a === 'exs') {
+      const s0 = todaySession();
+      const ei0 = +act.dataset.ex;
+      if (s0 && s0.ex[ei0] && s0.ex[ei0].sets.some((st) => st.done)) { toastT(`Unlog the sets first — they stay with ${s0.ex[ei0].name}`); return; }
+      openExSheet('swap', ei0, (s0 && !s0.finishedAt ? s0.dayId : dayIdFor()) || dayIdFor());
+      return;
+    }
     if (a === 'progress') { ui.mode = 'progress'; renderTrain(); return; }
     if (a === 'wu') { const s2 = todaySession(); if (s2) { const ex2 = s2.ex[+act.dataset.ex]; ex2.wuOpen = !ex2.wuOpen; S.putSession(K(), s2); renderTrain(); } return; }
     if (a === 'wutick') { const s3 = todaySession(); if (s3) { const ex3 = s3.ex[+act.dataset.ex]; ex3.wu = ex3.wu || []; const wi = +act.dataset.wi; ex3.wu[wi] = !ex3.wu[wi]; S.putSession(K(), s3); renderTrain(); } return; }
@@ -656,5 +672,163 @@ window.__fuelTrain = {
   render() { renderTrain(); },
   setTab(t) { ui.mode = 'progress'; ui.progTab = t; renderTrain(); },
 };
+
+
+/* ══════════ your version of a program day: swap · add · reorder · remove ══════════ */
+function blankSets(n) { return Array.from({ length: n }, () => ({ w: null, r: null, done: false, ts: null })); }
+
+/* exercises he has actually logged before (with a completed set), most recent first */
+function yourExNames(exclude) {
+  const seen = new Set(exclude.map((n) => String(n).toLowerCase()));
+  const out = [];
+  for (const h of S.sessionHistory(80)) {
+    for (const ex of (h.ex || [])) {
+      const k = String(ex.name || '').toLowerCase();
+      if (!k || seen.has(k)) continue;
+      if (!(ex.sets || []).some((st) => st.done)) continue;
+      seen.add(k); out.push(ex.name);
+    }
+  }
+  return out.slice(0, 12);
+}
+
+function openExSheet(mode, ei, dayId) {
+  const p = program();
+  if (!p || !dayId || !p.days[dayId]) return;
+  const base = p.days[dayId].exercises;
+  const plan = S.planFor(p.id, dayId, base);
+  const editing = mode === 'swap' && ei != null && !!plan[ei];
+  if (mode === 'swap' && !editing) return;
+  const cur = editing ? plan[ei] : null;
+  const group = cur ? exGroup(cur.name) : null;
+  const inPlan = plan.map((x) => x.name);
+
+  const back = document.createElement('div');
+  back.className = 'modal-backdrop';
+  back.id = 'ex-sheet';
+  back.innerHTML = `<div class="modal">
+    <div class="modal-head"><button class="icon-btn" data-xclose type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button><div class="modal-title">${editing ? 'Swap exercise' : 'Add exercise'}</div></div>
+    ${cur ? `<div class="ex-sheet-cur"><b>${esc(cur.name)}</b><span class="muted sm">${cur.sets} × ${esc(cur.reps)} · rest ${fmtRest(cur.rest)} between sets</span></div>` : ''}
+    <div class="field"><input id="ex-q" placeholder="Search ${EX_LIB.length} exercises, or type your own" autocomplete="off"></div>
+    <div id="ex-results"></div>
+    ${editing ? `<div class="ex-sheet-foot">
+      <button class="btn-ghost" data-xmove="-1" type="button">↑ Move up</button>
+      <button class="btn-ghost" data-xmove="1" type="button">↓ Move down</button>
+      <button class="btn-ghost" data-xremove type="button">Remove</button>
+      ${S.planCustomised(p.id, dayId) ? '<button class="btn-ghost" data-xreset type="button">Reset this day</button>' : ''}
+    </div>` : ''}
+  </div>`;
+  document.body.appendChild(back);
+  const input = back.querySelector('#ex-q');
+  const results = back.querySelector('#ex-results');
+  let rows = [];
+  const live = () => { const s = todaySession(); return s && !s.finishedAt && s.dayId === dayId ? s : null; };
+  const close = () => back.remove();
+
+  const rowHTML = (it, extra) => `<button class="food-row" data-xpick="${rows.length}" type="button">
+      <span class="food-thumb ph"><svg><use href="#i-dumbbell"/></svg></span>
+      <div class="food-main"><div class="food-name">${esc(it.name)}</div><div class="food-brand">${esc(extra || '')}</div></div>
+    </button>`;
+  const sect = (label, items, extra) => {
+    if (!items.length) return '';
+    let html = `<div class="food-sec">${label}</div>`;
+    for (const it of items) { html += rowHTML(it, extra(it)); rows.push(it); }
+    return html;
+  };
+
+  const paint = (q = '') => {
+    rows = [];
+    const t = q.toLowerCase().trim();
+    const lib = EX_LIB.filter((x) => !inPlan.some((n) => n.toLowerCase() === x.name.toLowerCase())
+      && (!t || x.name.toLowerCase().includes(t) || String(x.group).toLowerCase().includes(t)));
+    const mine = yourExNames(inPlan).filter((n) => !t || n.toLowerCase().includes(t)).map((n) => ({ name: n }));
+    let html = '';
+    if (t) {
+      html += sect('Matching exercises', lib, (it) => `${it.group} · ${it.sets} × ${it.reps}`);
+      html += sect('Your exercises', mine, () => 'logged before');
+      const exact = [...lib.map((x) => x.name.toLowerCase()), ...mine.map((m) => m.name.toLowerCase())].includes(t);
+      if (!exact && q.trim()) {
+        html = `<button class="food-row" data-xcustom type="button"><span class="food-thumb ph"><svg><use href="#i-plus"/></svg></span><div class="food-main"><div class="food-name">Use “${esc(q.trim())}”</div><div class="food-brand">your own exercise name</div></div></button>` + html;
+      }
+    } else {
+      html += sect(group ? `Same muscle group · ${esc(group)}` : 'Same muscle group', lib.filter((x) => x.group === group), (it) => `${it.sets} × ${it.reps} · rest ${fmtRest(it.rest)}`);
+      html += sect('Your exercises', mine, () => 'logged before');
+      html += sect('All exercises', lib.filter((x) => x.group !== group), (it) => `${it.group} · ${it.sets} × ${it.reps}`);
+    }
+    results.innerHTML = html || '<div class="empty-state">No matches — type a name to add your own.</div>';
+  };
+  paint();
+
+  const choose = (it) => {
+    const list = S.planFor(p.id, dayId, base);
+    const s = live();
+    if (editing) {
+      const old = list[ei] || cur;
+      const nx = { name: it.name, sets: old.sets, reps: old.reps, rest: old.rest }; // keeps his scheme
+      list[ei] = nx;
+      S.setPlan(p.id, dayId, list);
+      if (s && s.ex[ei] && !s.ex[ei].sets.some((st) => st.done)) {
+        s.ex[ei].name = nx.name; s.ex[ei].reps = nx.reps; s.ex[ei].rest = nx.rest;
+        S.putSession(K(), s);
+      }
+      toastT(`${old.name} → ${it.name}`);
+    } else {
+      const meta = exMeta(it.name) || {};
+      const nx = { name: it.name, sets: meta.sets || 3, reps: meta.reps || '10', rest: meta.rest ?? 60 };
+      list.push(nx);
+      S.setPlan(p.id, dayId, list);
+      if (s) { s.ex.push({ name: nx.name, reps: nx.reps, rest: nx.rest, sets: blankSets(nx.sets) }); S.putSession(K(), s); }
+      toastT(`${nx.name} added`); 
+    }
+    close(); renderTrain();
+  };
+
+  const move = (delta) => {
+    const j = ei + delta;
+    const list = S.planFor(p.id, dayId, base);
+    if (j < 0 || j >= list.length) { toastT(delta < 0 ? 'Already first' : 'Already last'); return; }
+    [list[ei], list[j]] = [list[j], list[ei]];
+    S.setPlan(p.id, dayId, list);
+    const s = live();
+    if (s && s.ex[ei] && s.ex[j] && !s.ex.some((x) => x.sets.some((st) => st.done))) {
+      [s.ex[ei], s.ex[j]] = [s.ex[j], s.ex[ei]];
+      S.putSession(K(), s);
+    }
+    toastT(delta < 0 ? 'Moved up' : 'Moved down');
+    close(); renderTrain();
+  };
+
+  const remove = () => {
+    const list = S.planFor(p.id, dayId, base);
+    if (list.length <= 1) { toastT('A day needs at least one exercise'); return; }
+    const s = live();
+    if (s && s.ex[ei] && s.ex[ei].sets.some((st) => st.done)) { toastT(`Unlog the sets first — they stay with ${cur.name}`); return; }
+    const nm = list[ei].name;
+    list.splice(ei, 1);
+    S.setPlan(p.id, dayId, list);
+    if (s && s.ex[ei]) { s.ex.splice(ei, 1); S.putSession(K(), s); }
+    toastT(`${nm} removed`);
+    close(); renderTrain();
+  };
+
+  const resetDay = () => {
+    S.resetPlan(p.id, dayId);
+    toastT(live() ? 'Default restored — this workout keeps what you started with' : 'Program default restored');
+    close(); renderTrain();
+  };
+
+  back.addEventListener('click', (e) => {
+    if (e.target === back || e.target.closest('[data-xclose]')) { close(); return; }
+    const pk = e.target.closest('[data-xpick]');
+    if (pk) { const it = rows[+pk.dataset.xpick]; if (it) choose(it); return; }
+    if (e.target.closest('[data-xcustom]')) { const q = input.value.trim(); if (q) choose({ name: q }); return; }
+    const mv = e.target.closest('[data-xmove]');
+    if (mv) { move(+mv.dataset.xmove); return; }
+    if (e.target.closest('[data-xremove]')) { remove(); return; }
+    if (e.target.closest('[data-xreset]')) { resetDay(); return; }
+  });
+  input.addEventListener('input', () => paint(input.value));
+  setTimeout(() => input.focus(), 120);
+}
 
 trainBoot();

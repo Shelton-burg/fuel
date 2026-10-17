@@ -180,3 +180,132 @@ export const PROGRAMS = {
     },
   },
 };
+
+/* ─────────────────────────── exercise library (swap / add) ───────────────────────────
+   Curated list used by the swap sheet: name, muscle group, sensible default scheme.
+   Every exercise used by the three programs is in here so "same muscle group" works
+   from any starting point. Numbers are starting points for ADDED exercises only —
+   a SWAP keeps the scheme the exercise it replaces already had. */
+export const EX_LIB = [
+  /* chest */
+  { name: 'Bench Press', group: 'Chest', sets: 4, reps: '8-10', rest: 90 },
+  { name: 'Incline Bench Press', group: 'Chest', sets: 4, reps: '8-10', rest: 90 },
+  { name: 'Decline Bench Press', group: 'Chest', sets: 3, reps: '10', rest: 90 },
+  { name: 'Dumbbell Bench Press', group: 'Chest', sets: 4, reps: '10', rest: 75 },
+  { name: 'Incline Dumbbell Press', group: 'Chest', sets: 3, reps: '10-12', rest: 75 },
+  { name: 'Flat Dumbbell Press', group: 'Chest', sets: 3, reps: '10-12', rest: 75 },
+  { name: 'Dumbbell Fly', group: 'Chest', sets: 3, reps: '12', rest: 60 },
+  { name: 'Cable Fly', group: 'Chest', sets: 3, reps: '12-15', rest: 60 },
+  { name: 'Pec Deck', group: 'Chest', sets: 3, reps: '12', rest: 60 },
+  { name: 'Machine Chest Press', group: 'Chest', sets: 3, reps: '10-12', rest: 75 },
+  { name: 'Push-Ups', group: 'Chest', sets: 3, reps: '15', rest: 45 },
+  { name: 'Chest Dips', group: 'Chest', sets: 3, reps: '8-10', rest: 75 },
+  /* back */
+  { name: 'Barbell Row', group: 'Back', sets: 4, reps: '8-10', rest: 90 },
+  { name: 'Pendlay Row', group: 'Back', sets: 4, reps: '5', rest: 120 },
+  { name: 'Dumbbell Row', group: 'Back', sets: 3, reps: '10', rest: 75 },
+  { name: 'Chest-Supported Row', group: 'Back', sets: 3, reps: '10-12', rest: 75 },
+  { name: 'Seated Cable Row', group: 'Back', sets: 3, reps: '10-12', rest: 75 },
+  { name: 'Machine Row', group: 'Back', sets: 3, reps: '10-12', rest: 75 },
+  { name: 'T-Bar Row', group: 'Back', sets: 3, reps: '8-10', rest: 90 },
+  { name: 'Lat Pulldown', group: 'Back', sets: 4, reps: '10', rest: 90 },
+  { name: 'Straight-Arm Pulldown', group: 'Back', sets: 3, reps: '12-15', rest: 60 },
+  { name: 'Pull-Ups', group: 'Back', sets: 4, reps: '6', rest: 120 },
+  { name: 'Pull-Ups (assisted ok)', group: 'Back', sets: 4, reps: '8', rest: 90 },
+  { name: 'Assisted Pull-Ups', group: 'Back', sets: 3, reps: '10', rest: 60 },
+  { name: 'Chin-Ups', group: 'Back', sets: 3, reps: '6-8', rest: 90 },
+  { name: 'Rack Pull', group: 'Back', sets: 3, reps: '6', rest: 150 },
+  /* shoulders */
+  { name: 'Overhead Press', group: 'Shoulders', sets: 4, reps: '8-10', rest: 90 },
+  { name: 'Standing Overhead Press', group: 'Shoulders', sets: 3, reps: '8', rest: 120 },
+  { name: 'Dumbbell Shoulder Press', group: 'Shoulders', sets: 3, reps: '10-12', rest: 60 },
+  { name: 'Machine Shoulder Press', group: 'Shoulders', sets: 3, reps: '10-12', rest: 75 },
+  { name: 'Arnold Press', group: 'Shoulders', sets: 3, reps: '10-12', rest: 60 },
+  { name: 'Push Press', group: 'Shoulders', sets: 3, reps: '5', rest: 120 },
+  { name: 'Lateral Raises', group: 'Shoulders', sets: 3, reps: '12-15', rest: 60 },
+  { name: 'Cable Lateral Raise', group: 'Shoulders', sets: 3, reps: '12-15', rest: 45 },
+  { name: 'Rear Delt Fly', group: 'Shoulders', sets: 3, reps: '12-15', rest: 45 },
+  { name: 'Face Pulls', group: 'Shoulders', sets: 3, reps: '15', rest: 60 },
+  { name: 'Upright Row', group: 'Shoulders', sets: 3, reps: '12', rest: 60 },
+  { name: 'Shrugs', group: 'Shoulders', sets: 3, reps: '12-15', rest: 60 },
+  /* biceps */
+  { name: 'Barbell Curl', group: 'Biceps', sets: 3, reps: '10-12', rest: 60 },
+  { name: 'EZ-Bar Curl', group: 'Biceps', sets: 3, reps: '10-12', rest: 60 },
+  { name: 'Dumbbell Curl', group: 'Biceps', sets: 3, reps: '10-12', rest: 60 },
+  { name: 'Hammer Curl', group: 'Biceps', sets: 3, reps: '12', rest: 60 },
+  { name: 'Incline Dumbbell Curl', group: 'Biceps', sets: 3, reps: '10-12', rest: 60 },
+  { name: 'Cable Curl', group: 'Biceps', sets: 3, reps: '12-15', rest: 45 },
+  { name: 'Rope Curl', group: 'Biceps', sets: 3, reps: '15', rest: 45 },
+  { name: 'Preacher Curl', group: 'Biceps', sets: 3, reps: '10-12', rest: 60 },
+  /* triceps */
+  { name: 'Close-Grip Bench Press', group: 'Triceps', sets: 3, reps: '8-10', rest: 90 },
+  { name: 'Skull Crushers', group: 'Triceps', sets: 3, reps: '10-12', rest: 60 },
+  { name: 'Triceps Rope Pushdown', group: 'Triceps', sets: 3, reps: '12', rest: 60 },
+  { name: 'Triceps Pushdown', group: 'Triceps', sets: 3, reps: '12-15', rest: 45 },
+  { name: 'Overhead Triceps Extension', group: 'Triceps', sets: 3, reps: '12-15', rest: 45 },
+  { name: 'Dumbbell Kickbacks', group: 'Triceps', sets: 3, reps: '12-15', rest: 45 },
+  { name: 'Triceps Dips', group: 'Triceps', sets: 3, reps: '10', rest: 60 },
+  /* quads */
+  { name: 'Back Squat', group: 'Quads', sets: 4, reps: '8-10', rest: 150 },
+  { name: 'Front Squat', group: 'Quads', sets: 3, reps: '8', rest: 150 },
+  { name: 'Hack Squat', group: 'Quads', sets: 3, reps: '10-12', rest: 120 },
+  { name: 'Smith Machine Squat', group: 'Quads', sets: 3, reps: '10-12', rest: 120 },
+  { name: 'Pause Squat', group: 'Quads', sets: 3, reps: '5', rest: 150 },
+  { name: 'Leg Press', group: 'Quads', sets: 3, reps: '10-12', rest: 90 },
+  { name: 'Leg Extension', group: 'Quads', sets: 3, reps: '12', rest: 60 },
+  { name: 'Goblet Squat', group: 'Quads', sets: 3, reps: '15', rest: 60 },
+  { name: 'Bulgarian Split Squat', group: 'Quads', sets: 3, reps: '10', rest: 90 },
+  { name: 'Walking Lunges', group: 'Quads', sets: 3, reps: '10', rest: 90 },
+  { name: 'Step-Ups', group: 'Quads', sets: 3, reps: '12', rest: 60 },
+  /* hams & glutes */
+  { name: 'Deadlift', group: 'Hams & Glutes', sets: 4, reps: '6-8', rest: 150 },
+  { name: 'Sumo Deadlift', group: 'Hams & Glutes', sets: 4, reps: '5', rest: 180 },
+  { name: 'Trap-Bar Deadlift', group: 'Hams & Glutes', sets: 3, reps: '10', rest: 90 },
+  { name: 'Romanian Deadlift', group: 'Hams & Glutes', sets: 3, reps: '8-10', rest: 120 },
+  { name: 'Stiff-Leg Deadlift', group: 'Hams & Glutes', sets: 3, reps: '10', rest: 120 },
+  { name: 'Hip Thrust', group: 'Hams & Glutes', sets: 4, reps: '10', rest: 90 },
+  { name: 'Glute Bridge', group: 'Hams & Glutes', sets: 3, reps: '15', rest: 45 },
+  { name: 'Lying Leg Curl', group: 'Hams & Glutes', sets: 3, reps: '12', rest: 60 },
+  { name: 'Seated Leg Curl', group: 'Hams & Glutes', sets: 3, reps: '12', rest: 60 },
+  { name: 'Nordic Curl', group: 'Hams & Glutes', sets: 3, reps: '6-8', rest: 90 },
+  { name: 'Good Morning', group: 'Hams & Glutes', sets: 3, reps: '10', rest: 90 },
+  { name: 'Cable Pull-Through', group: 'Hams & Glutes', sets: 3, reps: '15', rest: 45 },
+  { name: 'Back Extension', group: 'Hams & Glutes', sets: 3, reps: '12-15', rest: 60 },
+  /* calves */
+  { name: 'Standing Calf Raise', group: 'Calves', sets: 4, reps: '15', rest: 45 },
+  { name: 'Seated Calf Raise', group: 'Calves', sets: 4, reps: '15', rest: 45 },
+  { name: 'Leg Press Calf Raise', group: 'Calves', sets: 4, reps: '15-20', rest: 45 },
+  /* core */
+  { name: 'Plank (seconds)', group: 'Core', sets: 3, reps: '60', rest: 60 },
+  { name: 'Side Plank (seconds)', group: 'Core', sets: 3, reps: '40', rest: 45 },
+  { name: 'Hanging Leg Raise', group: 'Core', sets: 3, reps: '12', rest: 60 },
+  { name: 'Cable Crunch', group: 'Core', sets: 3, reps: '15', rest: 45 },
+  { name: 'Ab Wheel Rollout', group: 'Core', sets: 3, reps: '10-12', rest: 60 },
+  { name: 'Russian Twist', group: 'Core', sets: 3, reps: '20', rest: 45 },
+  { name: 'Dead Bug', group: 'Core', sets: 3, reps: '10', rest: 45 },
+  /* conditioning */
+  { name: 'Rower (intervals)', group: 'Cardio', sets: 6, reps: '1 min hard', rest: 60 },
+  { name: 'Assault Bike (intervals)', group: 'Cardio', sets: 8, reps: '20 s hard', rest: 40 },
+  { name: 'Incline Treadmill Walk', group: 'Cardio', sets: 1, reps: '20 min', rest: 0 },
+  { name: 'Sled Push', group: 'Cardio', sets: 4, reps: '20 m', rest: 90 },
+];
+
+const libKey = (n) => String(n || '').toLowerCase().trim();
+
+/** muscle group for an exercise name, or null when it is a custom name */
+export function exGroup(name) {
+  const hit = EX_LIB.find((x) => libKey(x.name) === libKey(name));
+  return hit ? hit.group : null;
+}
+
+/** library entry for a name, or null */
+export function exMeta(name) {
+  return EX_LIB.find((x) => libKey(x.name) === libKey(name)) || null;
+}
+
+/** library entries in a group, alphabetically, excluding the given names */
+export function exInGroup(group, exclude = []) {
+  const ex = new Set(exclude.map(libKey));
+  return EX_LIB.filter((x) => x.group === group && !ex.has(libKey(x.name))).slice().sort((a, b) => a.name.localeCompare(b.name));
+}
+

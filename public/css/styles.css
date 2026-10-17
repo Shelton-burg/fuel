@@ -759,3 +759,16 @@ button.stat-chip:active { transform:scale(.96); }
 /* Data safety panel status colours */
 .ok-txt { color: var(--good); }
 .bad-txt { color: var(--bad); }
+
+/* ── your version of a program day (Train exercise editing) ─────────────── */
+.ex-li { grid-template-columns:22px 1fr auto auto 20px; width:100%; background:none; border:0; border-bottom:1px solid var(--line); color:var(--text); font:inherit; font-size:13.5px; text-align:left; cursor:pointer; }
+.ex-li:active { background:rgba(255,255,255,.04); }
+.ex-edit-ico { width:15px; height:15px; color:var(--muted); opacity:.85; }
+.add-ex { width:100%; margin-top:10px; }
+.ex-swap { background:none; border:0; padding:4px; color:var(--muted); flex:0 0 auto; }
+.ex-swap svg { width:18px; height:18px; display:block; }
+.ex-swap:active { transform:scale(.9); }
+.ex-sheet-cur { display:flex; flex-direction:column; gap:3px; padding:0 2px 12px; }
+.ex-sheet-cur b { font-size:15px; }
+.ex-sheet-foot { display:flex; flex-wrap:wrap; gap:8px; padding-top:14px; border-top:1px solid var(--line); margin-top:10px; }
+#ex-sheet #ex-results { max-height:44vh; overflow-y:auto; -webkit-overflow-scrolling:touch; } /* keep search + actions on screen over a 91-item list */

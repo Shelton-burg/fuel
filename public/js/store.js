@@ -54,6 +54,7 @@ export function hasAnyData(st = state) {
     if (Object.keys(st.workouts || {}).length) return true;
     if (((st.settings || {}).usuals || []).length) return true;
     if (((st.settings || {}).foodFavs || []).length) return true;
+    if (Object.keys(((st.settings || {}).planEdits) || {}).length) return true;
     return false;
   } catch { return true; } // in doubt: assume data exists, never clobber
 }
@@ -239,6 +240,30 @@ export function removeFood(id) {
   save();
 }
 export function recentFoods(n = 8) { return myFoods(n); }
+
+/* ── my version of a program day (swap / add / remove / reorder) ── */
+export function planEdits() { return (state.settings || {}).planEdits || {}; }
+/** the exercise list actually used for a program day — the user's edits win */
+export function planFor(programId, dayId, fallback) {
+  const list = planEdits()[programId]?.[dayId];
+  const src = Array.isArray(list) && list.length ? list : (fallback || []);
+  return src.map((x) => ({ name: x.name, sets: x.sets, reps: x.reps, rest: x.rest }));
+}
+export function planCustomised(programId, dayId) {
+  const list = planEdits()[programId]?.[dayId];
+  return Array.isArray(list) && list.length > 0;
+}
+export function setPlan(programId, dayId, list) {
+  state.settings = state.settings || {};
+  const pe = state.settings.planEdits || {};
+  pe[programId] = pe[programId] || {};
+  if (list === null) delete pe[programId][dayId];
+  else pe[programId][dayId] = list.map((x) => ({ name: String(x.name), sets: Number(x.sets) || 1, reps: String(x.reps || '10'), rest: Number(x.rest) || 60 }));
+  if (!Object.keys(pe[programId]).length) delete pe[programId];
+  state.settings.planEdits = pe;
+  save();
+}
+export function resetPlan(programId, dayId) { setPlan(programId, dayId, null); }
 
 /* ── targets (Mifflin-St Jeor) ── */
 export function computeTargets(profile) {
