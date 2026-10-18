@@ -1,7 +1,8 @@
 // FUEL — label parser: reads a nutrition-panel photo via Gemini vision.
 // Returns ONLY what is printed on the label. Never estimates.
 
-const MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+// 3.8-flash is the current model; 2.5-flash was retired for new users (404), so it must not be first.
+const MODEL_CANDIDATES = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
 
 const PROMPT = `You are reading a photo of a packaged food's nutrition information panel (Australian or international packaging).
 Extract ONLY what is actually printed on the panel. Never estimate, infer or invent values. If a value is not printed, return null for it.

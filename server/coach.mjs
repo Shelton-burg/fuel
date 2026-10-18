@@ -2,7 +2,7 @@
 // The calorie numbers are computed client-side (Mifflin-St Jeor) and passed in —
 // the model picks between them and explains; it never invents values.
 
-const MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+const MODEL_CANDIDATES = ['gemini-3.8-flash', 'gemini-flash-latest']; // 2.5-flash is retired for new users
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 const DEEPSEEK_MODEL = 'deepseek-chat';
 
