@@ -253,6 +253,16 @@ function metricIndex(ctx) {
   add('sessions_28d', 'Sessions, last 28 days', tr.sessions28d, null, 'sessions');
   add('sessions_week', 'Sessions per week', tr.perWeek, null, 'sessions');
   add('deload_due', 'Deload due', tr.deloadDue ? 1 : 0, null, '');
+  const wa = c.water || {};
+  add('water_today', 'Water today', (wa.todayMl || 0) / 1000, (wa.goalMl || 0) / 1000, 'L');
+  add('water_avg7', 'Water, 7-day average', wa.avg7Ml != null ? wa.avg7Ml / 1000 : null, (wa.goalMl || 0) / 1000, 'L');
+  const fe = c.feel || {};
+  add('energy_7d', 'Energy, 7-day average', fe.energy, 5, '/5');
+  add('mood_7d', 'Mood, 7-day average', fe.mood, 5, '/5');
+  add('soreness_7d', 'Soreness, 7-day average', fe.soreness, 5, '/5');
+  add('hunger_7d', 'Hunger, 7-day average', fe.hunger, 5, '/5');
+  add('readiness', 'Readiness (energy + mood − soreness)', fe.readiness, 5, '/5');
+  add('checkin_days', 'Check-ins logged (of 7)', fe.days, 7, 'days');
   for (const meal of Object.keys(i.byMeal || {})) {
     const row = i.byMeal[meal] || {};
     add('meal_' + slug(meal), `${meal} average`, row.kcal, null, 'kcal');

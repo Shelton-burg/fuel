@@ -8,7 +8,7 @@ export const DEFAULT_PROFILE = { sex: 'male', age: 38, height: 180, weight: 85, 
 export const DEFAULT_GOALS = { kcal: 2550, protein: 180, carbs: 298, fat: 71 }; // 180p + 298c + 71f = 2,550 (protein 4, carbs 4, fat 9)
 
 function fresh() {
-  return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, measures: {}, recipes: {}, settings: {}, meta: { created: Date.now() } };
+  return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, measures: {}, recipes: {}, water: {}, checkins: {}, settings: {}, meta: { created: Date.now() } };
 }
 
 let state = load();
@@ -57,6 +57,8 @@ export function hasAnyData(st = state) {
     if (Object.keys(((st.settings || {}).planEdits) || {}).length) return true;
     if (Object.keys(st.measures || {}).length) return true;
     if (Object.keys(st.recipes || {}).length) return true;
+    if (Object.keys(st.water || {}).length) return true;
+    if (Object.keys(st.checkins || {}).length) return true;
     return false;
   } catch { return true; } // in doubt: assume data exists, never clobber
 }
@@ -460,6 +462,95 @@ export function latestWeight() {
   const k = keys[keys.length - 1];
   return { key: k, kg: state.weights[k] };
 }
+/* ── water + daily check-in ── */
+export const WATER_GOAL_DEFAULT = 2500; // ml
+export function waterGoal() {
+  const g = Number((state.settings || {}).waterGoal);
+  return isFinite(g) && g >= 500 ? g : WATER_GOAL_DEFAULT;
+}
+export function setWaterGoal(ml) {
+  const v = Math.max(500, Math.round(Number(ml) || 0));
+  setSetting('waterGoal', v);
+  return v;
+}
+export function logWater(key = dayKey(), ml) {
+  state.water = state.water || {};
+  const v = Math.max(0, Math.round(Number(ml) || 0));
+  if (v === 0) delete state.water[key];
+  else state.water[key] = v;
+  save();
+  return v;
+}
+export function waterFor(key = dayKey()) { return (state.water || {})[key] || 0; }
+/** add to today's total without wiping it */
+export function addWater(ml, key = dayKey()) {
+  return logWater(key, waterFor(key) + (Number(ml) || 0));
+}
+export function waterSeries(n = 14) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const k = dayKey(new Date(Date.now() - i * 864e5));
+    out.push({ key: k, ml: waterFor(k) });
+  }
+  return out;
+}
+
+/* how he felt — 1..5 each, soreness inverted for readiness */
+export const CHECKIN_SCALES = [
+  { key: 'energy', label: 'Energy', low: 'flat', high: 'buzzing' },
+  { key: 'mood', label: 'Mood', low: 'rough', high: 'great' },
+  { key: 'soreness', label: 'Soreness', low: 'fresh', high: 'wrecked' },
+  { key: 'hunger', label: 'Hunger', low: 'fine', high: 'starving' },
+];
+export function logCheckin(key, obj) {
+  state.checkins = state.checkins || {};
+  const clean = {};
+  for (const sc of CHECKIN_SCALES) {
+    const v = Math.round(Number(obj && obj[sc.key]));
+    if (isFinite(v) && v >= 1 && v <= 5) clean[sc.key] = v;
+  }
+  const note = String((obj && obj.note) || '').trim().slice(0, 300);
+  if (note) clean.note = note;
+  if (!Object.keys(clean).length) return null;
+  state.checkins[key] = { ...(state.checkins[key] || {}), ...clean, ts: Date.now() };
+  save();
+  return state.checkins[key];
+}
+export function getCheckin(key = dayKey()) { return (state.checkins || {})[key] || null; }
+export function checkinSeries(n = 14) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const k = dayKey(new Date(Date.now() - i * 864e5));
+    const c = getCheckin(k);
+    if (c) out.push({ key: k, ...c });
+  }
+  return out;
+}
+/** 1..5 readiness from energy + mood − soreness; null when nothing is logged */
+export function readiness(checkin) {
+  const c = checkin || getCheckin();
+  if (!c) return null;
+  const parts = [];
+  if (c.energy) parts.push(c.energy);
+  if (c.mood) parts.push(c.mood);
+  if (c.soreness) parts.push(6 - c.soreness);
+  if (!parts.length) return null;
+  return Math.round((parts.reduce((a, b) => a + b, 0) / parts.length) * 10) / 10;
+}
+export function avgFeeling(n = 7) {
+  const rows = checkinSeries(n);
+  const avg = (k) => {
+    const vals = rows.map((r) => r[k]).filter((v) => v > 0);
+    return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+  };
+  const rdy = rows.map((r) => readiness(r)).filter((v) => v != null);
+  return {
+    days: rows.length,
+    energy: avg('energy'), mood: avg('mood'), soreness: avg('soreness'), hunger: avg('hunger'),
+    readiness: rdy.length ? Math.round((rdy.reduce((a, b) => a + b, 0) / rdy.length) * 10) / 10 : null,
+  };
+}
+
 /* ── body measurements (cm) ── */
 export const MEASURE_FIELDS = [['waist', 'Waist'], ['hips', 'Hips'], ['chest', 'Chest'], ['arm', 'Arm'], ['thigh', 'Thigh']];
 export function logMeasure(key, obj) {

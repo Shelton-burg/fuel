@@ -872,3 +872,44 @@ button.stat-chip:active { transform:scale(.96); }
 .update-bar .ub-btn { background:rgba(0,0,0,.82); color:#fff; border:0; border-radius:9px; padding:7px 14px; font:inherit; font-size:13px; font-weight:700; }
 .update-bar .ub-later { background:none; border:0; color:rgba(0,0,0,.62); font:inherit; font-size:12.5px; font-weight:600; padding:6px 2px; }
 .app-check { display:block; margin:6px auto 0; font-size:12px; color:var(--muted); }
+
+/* ── daily check-in ──────────────────────────────────────────────────────── */
+.checkin-card { display:flex; align-items:center; gap:12px; width:100%; text-align:left; background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:13px 14px; margin:12px 0 0; color:inherit; font:inherit; }
+.checkin-card.done { border-color:rgba(90,200,140,.32); }
+.checkin-card .ci-ico { width:36px; height:36px; flex:0 0 36px; display:flex; align-items:center; justify-content:center; border-radius:11px; background:rgba(255,255,255,.06); color:var(--muted); }
+.checkin-card .ci-ico.ok { background:rgba(90,200,140,.14); color:#5ac88c; }
+.checkin-card .ci-ico svg { width:19px; height:19px; }
+.checkin-card .ci-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.checkin-card .ci-main b { font-size:14px; }
+.checkin-card .ct-chev { width:16px; height:16px; color:var(--muted); flex:0 0 16px; }
+.ci-water { margin:6px 0 14px; }
+.ci-wrow { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; }
+.ci-wlabel { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+.ci-wval { font-family:var(--font-num); font-size:14px; }
+.ci-wbar { position:relative; height:10px; border-radius:5px; background:rgba(255,255,255,.07); overflow:hidden; }
+.ci-wbar i { display:block; height:10px; border-radius:5px; background:linear-gradient(90deg,#4ea8de,#5ac8fa); transition:width .18s ease; }
+.ci-wbtns { margin-top:10px; }
+.ci-scales { display:flex; flex-direction:column; gap:12px; margin:4px 0 14px; }
+.ci-scale { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.ci-slabel { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.ci-slabel b { font-size:13.5px; }
+.ci-slabel .sm { font-size:11px; }
+.ci-dots { display:flex; gap:6px; flex:0 0 auto; }
+.ci-dot { width:36px; height:36px; border-radius:50%; border:1px solid rgba(255,255,255,.24); background:rgba(255,255,255,.05); color:var(--text); font:inherit; font-size:13.5px; font-family:var(--font-num); }
+.ci-scales-head { display:flex; justify-content:space-between; align-items:baseline; margin:16px 0 8px; }
+.ci-scales-head b { font-size:14px; }
+.ci-dot.sel { background:var(--amber); border-color:var(--amber); color:#1a1207; font-weight:700; }
+.water-today { display:flex; align-items:baseline; gap:8px; margin:2px 0 10px; }
+.water-today b { font-family:var(--font-num); font-size:22px; }
+.water-row { display:grid; grid-template-columns:22px 1fr 46px; align-items:center; gap:10px; padding:4px 0; }
+.water-day { font-size:11.5px; color:var(--muted); }
+.water-bar { position:relative; height:9px; border-radius:5px; background:rgba(255,255,255,.06); }
+.water-bar i { display:block; height:9px; border-radius:5px; background:linear-gradient(90deg,#4ea8de,#5ac8fa); }
+.water-bar b { position:absolute; top:-2px; bottom:-2px; width:1.5px; background:rgba(255,255,255,.4); }
+.water-n { font-family:var(--font-num); font-size:11.5px; text-align:right; color:var(--muted); }
+.fl-row { display:grid; grid-template-columns:64px 1fr 34px; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--line); }
+.fl-day { font-size:11.5px; color:var(--muted); }
+.fl-dots { display:flex; gap:5px; }
+.fl-dot { width:22px; height:22px; border-radius:6px; background:rgba(255,255,255,.06); display:flex; align-items:center; justify-content:center; font-size:11px; font-style:normal; font-family:var(--font-num); color:var(--muted); }
+.fl-rdy { font-family:var(--font-num); font-size:12px; text-align:right; }
+.meas-cell.rdy b { color:var(--amber); }

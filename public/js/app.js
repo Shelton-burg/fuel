@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v20';
+const APP_BUILD = 'v21';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -218,6 +218,7 @@ function renderAll() {
   renderToday();
   renderSettings();
   renderCoachTeaser();
+  renderCheckinCard();
 }
 
 function mealForNow() {
@@ -2003,6 +2004,23 @@ function seedDemo() {
   const ws = [[45, 87.2], [42, 87.0], [38, 86.7], [34, 86.9], [31, 86.3], [27, 86.0], [24, 85.8], [20, 85.9], [17, 85.3], [13, 85.1], [10, 84.9], [7, 84.8], [4, 84.7], [2, 84.6]];
   for (const [ago, kg] of ws) S.logWeight(S.dayKey(new Date(Date.now() - ago * 864e5)), kg);
 
+  // water + daily check-ins across the last week
+  const waterMl = [2400, 1800, 2600, 2100, 2900, 1500, 900];
+  const feels = [
+    { energy: 4, mood: 4, soreness: 2, hunger: 3 },
+    { energy: 3, mood: 3, soreness: 4, hunger: 4 },
+    { energy: 5, mood: 4, soreness: 1, hunger: 2 },
+    { energy: 2, mood: 3, soreness: 4, hunger: 5 },
+    { energy: 4, mood: 5, soreness: 2, hunger: 2 },
+    { energy: 3, mood: 4, soreness: 3, hunger: 3 },
+  ];
+  for (let i = 6; i >= 1; i--) {
+    const k = S.dayKey(new Date(Date.now() - i * 864e5));
+    S.logWater(k, waterMl[6 - i]);
+    if (i <= 6) S.logCheckin(k, feels[6 - i]);
+  }
+  S.logWater(S.dayKey(), 900);
+
   // one recipe so the builder has something to show in a demo
   S.saveRecipe({
     name: 'Spag bol',
@@ -2289,6 +2307,12 @@ function coachContext() {
     measures: { waist, change28d: waist28 },
     training: { programId: S.getSetting('programId') || 'muscle', sessions28d: s28, perWeek: Math.round((s28 / 4) * 10) / 10, muscles, lifts },
     recipes: S.recipes().slice(0, 6).map((r) => ({ name: r.name, perServeKcal: S.recipeTotals(r).per.kcal })),
+    water: {
+      todayMl: S.waterFor(S.dayKey()),
+      goalMl: S.waterGoal(),
+      avg7Ml: (() => { const w = S.waterSeries(7).filter((d) => d.ml > 0); return w.length ? Math.round(w.reduce((a, d) => a + d.ml, 0) / w.length) : null; })(),
+    },
+    feel: (() => { const f = S.avgFeeling(7); return { days: f.days, energy: f.energy, mood: f.mood, soreness: f.soreness, hunger: f.hunger, readiness: f.readiness }; })(),
     last7: rd.slice(0, 7).map((d) => ({ key: d.key, kcal: d.totals.kcal, protein: Math.round(d.totals.p), logged: d.any })),
     allowed: {
       kcal: [round10(g.kcal * 0.9), round10(g.kcal * 0.95), g.kcal, round10(g.kcal * 1.05)].filter((v, i, a) => a.indexOf(v) === i),
@@ -2455,3 +2479,115 @@ $('#btn-check-update')?.addEventListener('click', async () => {
   toast('Checked for a new version');
 });
 paintAppFoot();
+
+/* ══════════ daily check-in: weight · water · how you feel ══════════ */
+function renderCheckinCard() {
+  const card = $('#checkin-card');
+  if (!card) return;
+  const key = selDate;
+  const c = S.getCheckin(key);
+  const kg = (S.weightSeries().find((w) => w.key === key) || {}).kg;
+  const ml = S.waterFor(key);
+  const goal = S.waterGoal();
+  const rdy = S.readiness(c);
+  const bits = [];
+  if (kg) bits.push(`${fmt(kg, 1)} kg`);
+  if (ml) bits.push(`${fmt(ml / 1000, 2)} L`);
+  if (rdy != null) bits.push(`feeling ${fmt(rdy, 1)}/5`);
+  const done = bits.length > 0;
+  $('#ci-title').textContent = done ? (isToday() ? 'Today’s check-in' : S.fmtDate(key)) : 'Daily check-in';
+  $('#ci-sub').textContent = done ? bits.join(' · ') : 'Weight, water and how you feel — ten seconds';
+  card.classList.toggle('done', done);
+  const ico = $('#ci-ico');
+  if (ico) ico.classList.toggle('ok', !!c && !!c.energy);
+  card.dataset.done = done ? '1' : '0';
+}
+
+function checkinModal() {
+  const key = selDate;
+  const c = S.getCheckin(key) || {};
+  const loggedKg = (S.weightSeries().find((w) => w.key === key) || {}).kg;
+  const lastKg = S.latestWeight()?.kg ?? S.getState().profile.weight ?? '';
+  const startKg = loggedKg || lastKg || '';
+  const ratings = {};
+  for (const sc of S.CHECKIN_SCALES) if (c[sc.key]) ratings[sc.key] = c[sc.key];
+  const goal = S.waterGoal();
+  let ml = S.waterFor(key);
+
+  const { wrap } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">Check-in · ${esc(S.fmtDate(key))}</div>
+    </div>
+
+    <div class="field"><span>Weight (kg)</span><input id="ci-kg" type="number" inputmode="decimal" step="0.1" min="30" max="300" value="${startKg ?? ''}" placeholder="e.g. 88.2"></div>
+
+    <div class="ci-water">
+      <div class="ci-wrow"><span class="ci-wlabel">Water</span><span class="ci-wval" id="ci-wval">—</span></div>
+      <div class="ci-wbar"><i id="ci-wbar" style="width:0%"></i><span class="ci-wgoal"></span></div>
+      <div class="chip-row wrap ci-wbtns">
+        <button class="chip" data-water="250" type="button">+250 ml</button>
+        <button class="chip" data-water="500" type="button">+500 ml</button>
+        <button class="chip" data-water="-250" type="button">−250 ml</button>
+      </div>
+    </div>
+
+    <div class="ci-scales-head"><b>How you feel</b><span class="muted sm">tap 1–5 · all optional</span></div>
+    <div class="ci-scales">
+      ${S.CHECKIN_SCALES.map((sc) => `
+        <div class="ci-scale" data-scale="${sc.key}">
+          <div class="ci-slabel"><b>${sc.label}</b><span class="muted sm">${sc.low} → ${sc.high}</span></div>
+          <div class="ci-dots">${[1, 2, 3, 4, 5].map((n) => `<button class="ci-dot${ratings[sc.key] === n ? ' sel' : ''}" data-score="${n}" type="button" aria-label="${sc.label} ${n}">${n}</button>`).join('')}</div>
+        </div>`).join('')}
+    </div>
+
+    <label class="field"><span>Note (optional)</span><input id="ci-note" maxlength="300" placeholder="sore shoulder, big day at work…" value="${esc(c.note || '')}"></label>
+
+    <button class="btn primary" data-cisave type="button">Save check-in</button>
+  `);
+
+  const paintWater = () => {
+    const el = wrap.querySelector('#ci-wval');
+    const bar = wrap.querySelector('#ci-wbar');
+    if (el) el.textContent = ml ? `${fmt(ml / 1000, 2)} L of ${fmt(goal / 1000, 1)} L` : `0 L of ${fmt(goal / 1000, 1)} L`;
+    if (bar) bar.style.width = `${Math.min(100, Math.round((ml / goal) * 100))}%`;
+  };
+  paintWater();
+
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) { wrap.remove(); return; }
+    const w = e.target.closest('[data-water]');
+    if (w) {
+      ml = Math.max(0, S.addWater(Number(w.dataset.water), key));
+      paintWater();
+      vib(5);
+      return;
+    }
+    const dot = e.target.closest('[data-score]');
+    if (dot) {
+      const row = dot.closest('[data-scale]');
+      const k = row.dataset.scale;
+      ratings[k] = Number(dot.dataset.score);
+      row.querySelectorAll('.ci-dot').forEach((b) => b.classList.toggle('sel', b === dot));
+      vib(5);
+      return;
+    }
+    if (e.target.closest('[data-cisave]')) {
+      const kgEl = wrap.querySelector('#ci-kg');
+      const kg = parseFloat(kgEl.value);
+      let wroteKg = false;
+      if (isFinite(kg) && kg >= 30 && kg <= 300) { S.logWeight(key, Math.round(kg * 10) / 10); wroteKg = true; }
+      const saved = S.logCheckin(key, { ...ratings, note: wrap.querySelector('#ci-note').value });
+      if (!saved && !wroteKg && !ml) { toast('Log a weight, water or how you feel first'); return; }
+      wrap.remove();
+      vib(14);
+      const rdy = S.readiness(S.getCheckin(key));
+      toast(`Check-in saved${rdy != null ? ` — feeling ${fmt(rdy, 1)}/5` : ''}`);
+      renderToday();
+      renderCheckinCard();
+    }
+  });
+  setTimeout(() => wrap.querySelector('#ci-kg')?.focus(), 120);
+}
+
+$('#checkin-card')?.addEventListener('click', checkinModal);

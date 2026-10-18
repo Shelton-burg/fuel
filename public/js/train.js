@@ -362,7 +362,7 @@ function exSeries(name, finAsc) {
 function progressHTML(p) {
   const fin = finishedSessions();
   const asc = fin.slice().reverse();
-  const TAB_META = { volume: 'Volume', muscles: 'Muscles', strength: 'Strength', weight: 'Weight', bests: 'Bests' };
+  const TAB_META = { volume: 'Volume', muscles: 'Muscles', strength: 'Strength', weight: 'Body', bests: 'Bests' };
   const tabs = ['volume', 'muscles', 'strength', 'weight', 'bests']
     .map((id) => `<button class="chip${ui.progTab === id ? ' sel' : ''}" data-tab="${id}" type="button">${TAB_META[id]}</button>`)
     .join('');
@@ -420,9 +420,9 @@ function progressHTML(p) {
         <div class="prog-delta ${d === null || d <= 0 ? 'down' : 'up'}" id="prog-wt-delta">${d === null ? `logged ${S.fmtDate(latest.key)}` : `${d >= 0 ? '+' : ''}${d} kg in 30 days`}</div></div>
         <div class="panel chart-panel"><canvas id="prog-weight" class="prog-canvas" height="150"></canvas>
         <div class="chart-legend"><span class="muted">Your weigh-ins</span><span class="muted">tap the weight chip on Today to log</span></div></div>
-        ${measHTML()}${photoPanelHTML()}`
+        ${waterHTML()}${feelHTML()}${measHTML()}${photoPanelHTML()}`
       : `<div class="panel"><div class="empty-state">No weigh-ins yet.<br>Tap the weight chip on the Today screen to log one.</div></div>
-        ${measHTML()}${photoPanelHTML()}`;
+        ${waterHTML()}${feelHTML()}${measHTML()}${photoPanelHTML()}`;
   }
   return `<div class="page-head"><h1>Progress</h1><p class="muted">${esc(p.name)}</p></div>
     <button class="link-btn" data-act="back" type="button">← Back</button>
@@ -579,6 +579,7 @@ document.addEventListener('click', (e) => {
     if (a === 'progress') { ui.mode = 'progress'; renderTrain(); return; }
     if (a === 'plates') { plateModal(); return; }
     if (a === 'meas') { measureModal(); return; }
+    if (a === 'wadd') { S.addWater(Number(act.dataset.wadd)); renderTrain(); vib(6); return; }
     if (a === 'wu') { const s2 = todaySession(); if (s2) { const ex2 = s2.ex[+act.dataset.ex]; ex2.wuOpen = !ex2.wuOpen; S.putSession(K(), s2); renderTrain(); } return; }
     if (a === 'wutick') { const s3 = todaySession(); if (s3) { const ex3 = s3.ex[+act.dataset.ex]; ex3.wu = ex3.wu || []; const wi = +act.dataset.wi; ex3.wu[wi] = !ex3.wu[wi]; S.putSession(K(), s3); renderTrain(); } return; }
     if (a === 'log') { const row = act.closest('.setrow'); logSet(+row.dataset.ex, +row.dataset.set); return; }
@@ -916,6 +917,48 @@ function measHTML() {
   return `<div class="panel"><h2 class="ph2">Measurements</h2>
     ${lm ? `<div class="meas-grid">${cells}</div><p class="muted sm">Last logged ${S.fmtDate(lm.key)}</p>` : '<p class="muted sm">Waist is the honest signal when the scale stalls. Log a tape measure once a fortnight.</p>'}
     <button class="btn" data-act="meas" type="button">${lm ? 'Update measurements' : 'Add measurements'}</button></div>`;
+}
+
+/* ══════════ water + how you feel (Body tab) ══════════ */
+function waterHTML() {
+  const days = S.waterSeries(7);
+  const goal = S.waterGoal();
+  const logged = days.filter((d) => d.ml > 0);
+  const avgL = logged.length ? logged.reduce((a, d) => a + d.ml, 0) / logged.length / 1000 : 0;
+  const max = Math.max(goal, ...days.map((d) => d.ml));
+  const today = S.waterFor(S.dayKey());
+  const rows = days.map((d) => {
+    const label = new Date(d.key + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'narrow' });
+    return `<div class="water-row"><span class="water-day">${label}</span><span class="water-bar"><i style="width:${Math.round((d.ml / max) * 100)}%"></i><b style="left:${Math.round((goal / max) * 100)}%"></b></span><span class="water-n">${d.ml ? fmtN(d.ml / 1000, 1) + ' L' : '—'}</span></div>`;
+  }).join('');
+  return `<div class="panel"><h2 class="ph2">Water · last 7 days</h2>
+    <div class="water-today"><b>${fmtN(today / 1000, 2)} L</b><span class="muted sm">today · goal ${fmtN(goal / 1000, 1)} L</span></div>
+    ${rows}
+    <div class="mg-legend"><span>│ goal ${fmtN(goal / 1000, 1)} L</span><span>avg ${avgL ? fmtN(avgL, 2) + ' L' : '—'}</span></div>
+    <div class="chip-row wrap" style="margin-top:10px">
+      <button class="chip" data-act="wadd" data-wadd="250" type="button">+250 ml</button>
+      <button class="chip" data-act="wadd" data-wadd="500" type="button">+500 ml</button>
+      <button class="chip" data-act="wadd" data-wadd="1000" type="button">+1 L</button>
+    </div></div>`;
+}
+
+function feelHTML() {
+  const rows = S.checkinSeries(7);
+  if (!rows.length) {
+    return `<div class="panel"><h2 class="ph2">How you feel</h2><p class="muted sm">Nothing logged yet — the daily check-in on Today takes ten seconds and fills this in: energy, mood, soreness and hunger, rolled into a readiness score.</p></div>`;
+  }
+  const a = S.avgFeeling(7);
+  const cells = S.CHECKIN_SCALES
+    .filter((sc) => a[sc.key] != null)
+    .map((sc) => `<div class="meas-cell"><b>${fmtN(a[sc.key], 1)}</b><span>${sc.label} /5</span></div>`).join('');
+  const list = rows.slice(-5).reverse().map((r) => {
+    const dots = S.CHECKIN_SCALES.map((sc) => `<i class="fl-dot" title="${sc.label} ${r[sc.key] || '—'}">${r[sc.key] || '·'}</i>`).join('');
+    return `<div class="fl-row"><span class="fl-day">${S.fmtDate(r.key).replace(/^\w+, /, '')}</span><span class="fl-dots">${dots}</span><span class="fl-rdy">${S.readiness(r) != null ? fmtN(S.readiness(r), 1) : '—'}</span></div>`;
+  }).join('');
+  return `<div class="panel"><h2 class="ph2">How you feel · last 7 days</h2>
+    <div class="meas-grid">${cells}<div class="meas-cell rdy"><b>${a.readiness != null ? fmtN(a.readiness, 1) : '—'}</b><span>Readiness /5</span></div></div>
+    ${list}
+    <p class="muted sm" style="margin-top:8px">Readiness = energy and mood, minus soreness. Under 3 for a few days is a signal to ease off.</p></div>`;
 }
 
 /* ══════════ plate calculator ══════════ */
