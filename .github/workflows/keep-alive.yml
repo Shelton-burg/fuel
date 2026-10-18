@@ -1,16 +1,20 @@
 name: keep-alive
 
-# Render spins a free web service down after 15 minutes without traffic and then
-# takes ~1 minute to wake. A ping every 5 minutes keeps FUEL warm so the app opens
-# instantly on the phone. Free for public repos; no third-party account needed.
+# Render spins a free web service down after 15 minutes without traffic, then takes ~1 minute
+# to wake — which makes the phone app feel broken.
 #
-# Note: GitHub disables scheduled workflows in a repo after 60 days with no commits,
-# and scheduled runs can be delayed a few minutes at busy times — 5-minute spacing
-# leaves plenty of room under Render's 15-minute idle window.
+# A frequent cron does NOT work for this: GitHub delays (and sometimes drops) high-frequency
+# scheduled runs, so a 5-minute schedule let the app sleep. Instead each run of this job holds
+# the service warm itself, pinging every 5 minutes for ~5h50m. That means only ONE trigger per
+# 6 hours has to fire — and if one is late, the service sleeps briefly and the next ping wakes
+# it, with the gap still under Render's 15-minute window in normal conditions.
+#
+# Free for public repos, no third-party account, no secrets. GitHub disables scheduled
+# workflows after 60 days without commits.
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '5 */6 * * *' # 00:05 · 06:05 · 12:05 · 18:05 UTC
   workflow_dispatch:
 
 concurrency:
@@ -20,18 +24,27 @@ concurrency:
 permissions: {}
 
 jobs:
-  ping:
+  keep-warm:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 355 # just under GitHub's 6-hour job cap
     steps:
-      - name: Wake / confirm FUEL
+      - name: Hold FUEL warm
         run: |
           URL="https://fuel-c6if.onrender.com/api/health"
-          START=$(date +%s)
-          CODE=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 120 "$URL" || echo 000)
-          END=$(date +%s)
-          echo "HTTP $CODE in $((END - START))s"
-          cat /tmp/health.json || true
-          echo
-          # 200 = warm and healthy; a cold start still returns 200 (just slower).
-          test "$CODE" = "200"
+          DEADLINE=$(( $(date +%s) + 5*3600 + 50*60 ))   # 5h50m
+          FAILS=0
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            START=$(date +%s)
+            CODE=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 120 "$URL" || echo 000)
+            TOOK=$(( $(date +%s) - START ))
+            echo "$(date -u +%H:%M:%S)Z  HTTP $CODE in ${TOOK}s"
+            if [ "$CODE" = "200" ]; then
+              FAILS=0
+            else
+              FAILS=$((FAILS + 1))
+              echo "::warning::health returned $CODE ($FAILS in a row)"
+              if [ "$FAILS" -ge 3 ]; then echo "::error::FUEL has been unreachable three times"; exit 1; fi
+            fi
+            sleep 300
+          done
+          echo "Handing over to the next scheduled run."
