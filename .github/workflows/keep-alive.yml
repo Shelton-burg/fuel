@@ -1,0 +1,37 @@
+name: keep-alive
+
+# Render spins a free web service down after 15 minutes without traffic and then
+# takes ~1 minute to wake. A ping every 5 minutes keeps FUEL warm so the app opens
+# instantly on the phone. Free for public repos; no third-party account needed.
+#
+# Note: GitHub disables scheduled workflows in a repo after 60 days with no commits,
+# and scheduled runs can be delayed a few minutes at busy times — 5-minute spacing
+# leaves plenty of room under Render's 15-minute idle window.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wake / confirm FUEL
+        run: |
+          URL="https://fuel-c6if.onrender.com/api/health"
+          START=$(date +%s)
+          CODE=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 120 "$URL" || echo 000)
+          END=$(date +%s)
+          echo "HTTP $CODE in $((END - START))s"
+          cat /tmp/health.json || true
+          echo
+          # 200 = warm and healthy; a cold start still returns 200 (just slower).
+          test "$CODE" = "200"
