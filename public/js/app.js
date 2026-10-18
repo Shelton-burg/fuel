@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v22';
+const APP_BUILD = 'v23';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -919,8 +919,8 @@ function labelReviewModal(dataUrl) {
     })
     .catch((e) => {
       if (/ai_key_rejected|Label reading is offline/i.test(e.message || '')) {
-        wrap.querySelector('.ai-status').outerHTML = `<div class="empty-state"><b>Label reading is offline.</b><br>The AI key behind it has expired, so photos can't be read right now. Type the numbers off the pack — it takes 20 seconds and it's exact.</div>`;
-        wrap.querySelector('.modal-title').textContent = 'Photo reading is offline';
+        wrap.querySelector('.ai-status').outerHTML = `<div class="empty-state"><b>Can't read labels right now.</b><br>Label photos need an AI service that's switched off at the moment — nothing is wrong with your photo. Scan the barcode or type the numbers in; both work and take seconds.</div>`;
+        wrap.querySelector('.modal-title').textContent = "Can't read labels right now";
         const byHand = document.createElement('button');
         byHand.className = 'btn primary';
         byHand.textContent = 'Enter the numbers by hand';

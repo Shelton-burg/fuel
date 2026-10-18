@@ -97,7 +97,7 @@ app.post('/api/parse-label', async (req, res) => {
     if (e.message === 'ai_key_rejected') {
       return res.status(503).json({
         error: 'ai_key_rejected',
-        message: 'Label reading is offline — the AI key has expired. Scan the barcode or enter the numbers by hand for now.',
+        message: "Label photos can't be read right now — scan the barcode or enter the numbers by hand, both still work.",
       });
     }
     res.status(502).json({ error: 'label_parse_failed', message: 'Could not read the label. Try again with a clearer, flatter photo.' });
