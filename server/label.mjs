@@ -1,7 +1,7 @@
 // FUEL — label parser: reads a nutrition-panel photo via Gemini vision.
 // Returns ONLY what is printed on the label. Never estimates.
 
-const MODEL_CANDIDATES = ['gemini-3.8-flash', 'gemini-2.5-flash'];
+const MODEL_CANDIDATES = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
 const PROMPT = `You are reading a photo of a packaged food's nutrition information panel (Australian or international packaging).
 Extract ONLY what is actually printed on the panel. Never estimate, infer or invent values. If a value is not printed, return null for it.
@@ -77,7 +77,9 @@ export async function parseLabel(base64, mimeType, apiKey) {
       body: JSON.stringify(body),
     });
     if (!r.ok) {
-      lastErr += `[${model}] ${r.status} ${(await r.text()).replace(/\s+/g, ' ').slice(0, 160)} | `;
+      const body = (await r.text()).replace(/\s+/g, ' ').slice(0, 200);
+      lastErr += `[${model}] ${r.status} ${body} | `;
+      if (r.status === 401 || r.status === 403) { const e = new Error('ai_key_rejected'); e.detail = lastErr; throw e; }
       continue; // try next model on failure
     }
     const j = await r.json();

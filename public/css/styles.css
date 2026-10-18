@@ -552,6 +552,7 @@ svg.sm { width:14px; height:14px; }
   display:flex; align-items:center; justify-content:center; gap:8px; padding:0 22px;
 }
 .scanner-btn svg { width:19px; height:19px; }
+.scanner-bottom .scanner-btn { flex:1; padding-left:10px; padding-right:10px; font-size:12.5px; white-space:nowrap; }
 .scanner-btn.primary-btn { background:linear-gradient(135deg, var(--amber), var(--amber-2)); color:#1A0E00; border:0; }
 
 /* photo + AI */

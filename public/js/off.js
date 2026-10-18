@@ -46,7 +46,13 @@ export async function searchFoods(q, limit = 24, signal) {
 /** Fetch one product by barcode. */
 export async function getProduct(code) {
   const url = `${BASE}/api/v2/product/${encodeURIComponent(code)}?fields=${FIELDS}`;
-  const j = await jget(url);
+  let j;
+  try { j = await jget(url); }
+  catch (e) {
+    // 404 is Open Food Facts' way of saying "never heard of it" — that is a miss, not an error
+    if (String(e.message) === 'off_404') return null;
+    throw e;
+  }
   if (j.status === 0 || !j.product) return null;
   const f = normalize(j.product);
   return f.kcal100 === null && f.kcalServe === null ? { ...f, noNutrition: true } : f;

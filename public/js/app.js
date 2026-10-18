@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v21';
+const APP_BUILD = 'v22';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -789,9 +789,11 @@ function searchModal() {
 async function scanBarcode() {
   if (!('BarcodeDetector' in window)) {
     openModal(`<div class="modal-head"><button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button><div class="modal-title">Scan barcode</div></div>
-      <div class="empty-state">This browser can't scan barcodes directly.<br><br>Snap the nutrition label instead — the AI will read it for you.</div>
-      <button class="btn primary" data-photo type="button">Snap the label instead</button>`).wrap.addEventListener('click', (e) => {
-      if (e.target.closest('[data-photo]')) { e.target.closest('.modal-backdrop').remove(); captureLabel(); }
+      <div class="empty-state">This browser can't use the camera to scan.<br><br>Type the number under the barcode instead — it's the same database lookup.</div>
+      <button class="btn primary" data-bctype type="button">Type the barcode</button>
+      <button class="btn ghost" data-man type="button">Enter the numbers by hand</button>`).wrap.addEventListener('click', (e) => {
+      if (e.target.closest('[data-bctype]')) { e.target.closest('.modal-backdrop').remove(); barcodeEntryModal(); }
+      if (e.target.closest('[data-man]')) { e.target.closest('.modal-backdrop').remove(); manualModal(); }
       if (e.target.closest('[data-close]')) e.target.closest('.modal-backdrop').remove();
     });
     return;
@@ -808,7 +810,10 @@ async function scanBarcode() {
       </div>
       <div class="reticle"></div>
       <div class="scanner-hint" data-hint>Point at the barcode — it scans automatically</div>
-      <div class="scanner-bottom"><button class="scanner-btn" data-label type="button"><svg><use href="#i-cam"/></svg>Label photo instead</button></div>
+      <div class="scanner-bottom">
+        <button class="scanner-btn" data-bctype type="button"><svg><use href="#i-edit"/></svg>Type the barcode</button>
+        <button class="scanner-btn" data-label type="button"><svg><use href="#i-cam"/></svg>Label photo instead</button>
+      </div>
     </div>`;
   document.body.appendChild(view);
   const video = $('video', view);
@@ -838,17 +843,9 @@ async function scanBarcode() {
         hint.textContent = `Found ${code} — checking the database…`;
         const f = await OFF.getProduct(code);
         cleanup();
-        if (!f) {
-          openModal(`<div class="modal-head"><button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button><div class="modal-title">Not found</div></div>
-            <div class="empty-state">Barcode <b>${esc(code)}</b> isn't in the database yet.<br><br>Snap the label on the pack instead — the AI will read it.</div>
-            <button class="btn primary" data-photo type="button">Snap the label</button>`).wrap.addEventListener('click', (e) => {
-            if (e.target.closest('[data-photo]')) { e.target.closest('.modal-backdrop').remove(); captureLabel(); }
-            if (e.target.closest('[data-close]')) e.target.closest('.modal-backdrop').remove();
-          });
-          return;
-        }
+        if (!f || f.noNutrition) { barcodeNotFoundModal(code, f); return; }
         // save the moment the barcode resolves — it lands in My foods even if he backs out
-        if (!f.noNutrition) { const fid = S.saveFood(f); if (fid) f.id = fid; }
+        { const fid = S.saveFood(f); if (fid) f.id = fid; }
         portionModal(f);
         return;
       }
@@ -860,6 +857,7 @@ async function scanBarcode() {
   view.addEventListener('click', async (e) => {
     if (e.target.closest('[data-close]')) cleanup();
     if (e.target.closest('[data-label]')) { cleanup(); captureLabel(); }
+    if (e.target.closest('[data-bctype]')) { cleanup(); barcodeEntryModal(); }
     if (e.target.closest('[data-torch]') && track) {
       try { torchOn = !torchOn; await track.applyConstraints({ advanced: [{ torch: torchOn }] }); } catch {}
     }
@@ -920,6 +918,21 @@ function labelReviewModal(dataUrl) {
       close();
     })
     .catch((e) => {
+      if (/ai_key_rejected|Label reading is offline/i.test(e.message || '')) {
+        wrap.querySelector('.ai-status').outerHTML = `<div class="empty-state"><b>Label reading is offline.</b><br>The AI key behind it has expired, so photos can't be read right now. Type the numbers off the pack — it takes 20 seconds and it's exact.</div>`;
+        wrap.querySelector('.modal-title').textContent = 'Photo reading is offline';
+        const byHand = document.createElement('button');
+        byHand.className = 'btn primary';
+        byHand.textContent = 'Enter the numbers by hand';
+        byHand.addEventListener('click', () => { close(); manualModal(); });
+        const byCode = document.createElement('button');
+        byCode.className = 'btn ghost';
+        byCode.textContent = 'Type the barcode instead';
+        byCode.addEventListener('click', () => { close(); barcodeEntryModal(); });
+        wrap.querySelector('.modal').appendChild(byHand);
+        wrap.querySelector('.modal').appendChild(byCode);
+        return;
+      }
       const msg = e.message === 'no_panel'
         ? `Couldn't spot a nutrition panel in that photo. Get the <b>"NUTRITION INFORMATION"</b> box in frame, flat and in focus.`
         : e.message === 'parse_failed' || e.message?.includes('read')
@@ -2591,3 +2604,54 @@ function checkinModal() {
 }
 
 $('#checkin-card')?.addEventListener('click', checkinModal);
+
+/* ══════════ fallbacks that don't need the AI ══════════ */
+function barcodeNotFoundModal(code, f) {
+  const known = f && f.name && f.name !== 'Unknown product';
+  openModal(`<div class="modal-head"><button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button><div class="modal-title">${known ? 'No nutrition data' : 'Not in the database'}</div></div>
+    <div class="empty-state">${known
+      ? `The barcode <b>${esc(code)}</b> is <b>${esc(f.name)}</b>, but nobody has entered its nutrition yet.<br><br>Type the numbers off the pack and it's yours for good.`
+      : `Barcode <b>${esc(code)}</b> isn't in Open Food Facts yet.<br><br>Type the numbers off the pack — that's the only exact source for this one.`}</div>
+    <button class="btn primary" data-man type="button">Enter the numbers by hand</button>
+    <button class="btn ghost" data-bctype type="button">Try a different code</button>`).wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-man]')) { e.target.closest('.modal-backdrop').remove(); manualModal(); }
+    if (e.target.closest('[data-bctype]')) { e.target.closest('.modal-backdrop').remove(); barcodeEntryModal(); }
+    if (e.target.closest('[data-close]')) e.target.closest('.modal-backdrop').remove();
+  });
+}
+
+function barcodeEntryModal() {
+  const { wrap } = openModal(`
+    <div class="modal-head"><button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button><div class="modal-title">Type the barcode</div></div>
+    <div class="field"><span>Barcode number</span><input id="bc-q" inputmode="numeric" autocomplete="off" placeholder="e.g. 9300675024235"></div>
+    <p class="muted sm" style="margin-top:0">It's the row of numbers printed under the bars, usually 12 or 13 digits.</p>
+    <div class="ai-status" id="bc-status" hidden><div class="spinner"></div><span>Looking it up…</span></div>
+    <button class="btn primary" data-bclook type="button">Look it up</button>
+    <button class="btn ghost" data-man type="button">Enter the numbers by hand instead</button>
+  `);
+  const inp = wrap.querySelector('#bc-q');
+  const status = wrap.querySelector('#bc-status');
+  setTimeout(() => inp.focus(), 120);
+  const look = async () => {
+    const code = String(inp.value || '').replace(/\D/g, '');
+    if (code.length < 8) { toast('That looks short — barcodes are usually 12 or 13 digits'); return; }
+    status.hidden = false;
+    try {
+      const f = await OFF.getProduct(code);
+      status.hidden = true;
+      if (!f || f.noNutrition) { wrap.remove(); barcodeNotFoundModal(code, f); return; }
+      { const fid = S.saveFood(f); if (fid) f.id = fid; }
+      wrap.remove();
+      portionModal(f);
+    } catch (e) {
+      status.hidden = true;
+      toast('Lookup failed — check your signal and try again', 'i-x');
+    }
+  };
+  wrap.querySelector('[data-bclook]').addEventListener('click', look);
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') look(); });
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-close]')) wrap.remove();
+    if (e.target.closest('[data-man]')) { wrap.remove(); manualModal(); }
+  });
+}
