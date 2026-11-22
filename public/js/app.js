@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v25';
+const APP_BUILD = 'v26';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -132,7 +132,7 @@ $('#goals-body').addEventListener('change', (e) => {
   const t = e.target;
   if (t.id === 'goal-target') S.setProfile({ targetWeight: t.value ? Math.round(+t.value * 10) / 10 : null });
   else if (t.id === 'goal-rate') S.setProfile({ rate: +t.value || 0.5 });
-  else if (t.id === 'goal-cals') { /* applied by the Set button, not on blur */ }
+  else if (t.id === 'goal-cals') return; // applied by the Set button — a re-render here would wipe what you typed
   else if (t.id === 'goal-notes') S.setProfile({ notes: t.value.slice(0, 400) });
   else return;
   renderGoals();
