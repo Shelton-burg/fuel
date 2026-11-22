@@ -5,7 +5,7 @@ const KEY = 'fuel-state-v1';
 export const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'];
 
 export const DEFAULT_PROFILE = { sex: 'male', age: 38, height: 180, weight: 85, activity: 1.55, goalType: 'maintain', rate: 0.5, aspir: 'maintain', targetWeight: null, notes: '', calPref: null };
-export const DEFAULT_GOALS = { kcal: 2550, protein: 180, carbs: 298, fat: 71 }; // 180p + 298c + 71f = 2,550 (protein 4, carbs 4, fat 9)
+export const DEFAULT_GOALS = { kcal: 2550, protein: 180, carbs: 298, fat: 71, kcalLock: false }; // 180p + 298c + 71f = 2,550 (protein 4, carbs 4, fat 9)
 
 function fresh() {
   return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, measures: {}, recipes: {}, water: {}, checkins: {}, settings: {}, meta: { created: Date.now() } };
@@ -367,6 +367,21 @@ export function importJSON(text) {
 export function resetAll() { state = fresh(); state.meta.resetAt = Date.now(); save(); } // tombstone: boots won't auto-restore a wiped net over an intentional reset
 export function setProfile(p) { state.profile = { ...state.profile, ...p }; save(); }
 export function setGoals(g) { state.goals = { ...state.goals, ...g }; save(); }
+
+/* ── manual calorie target ──
+   A number the owner typed beats the calculator: kcalLock stops profile/weight
+   recomputes overwriting it. Macros are rebalanced so they still add up. */
+export function setManualKcal(kcal) {
+  const k = Math.max(800, Math.min(8000, Math.round(Number(kcal) || 0)));
+  if (!k) throw new Error('bad_kcal');
+  const protein = state.goals.protein || Math.round(state.profile.weight * 2);
+  const fat = Math.round((k * 0.25) / 9);
+  const carbs = Math.max(0, Math.round((k - protein * 4 - fat * 9) / 4));
+  state.goals = { ...state.goals, kcal: k, protein, fat, carbs, kcalLock: true };
+  save();
+  return state.goals;
+}
+export function clearKcalLock() { state.goals = { ...state.goals, kcalLock: false }; save(); }
 
 /* ── nutrition helpers ── */
 export const KJ_PER_KCAL = 4.184;

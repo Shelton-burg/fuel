@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v24';
+const APP_BUILD = 'v25';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -98,6 +98,23 @@ $('#goals-body').addEventListener('click', (e) => {
     renderGoals(); vib(6); return;
   }
   if (t.closest('[data-goals-back]')) { renderSettings(); switchView(goalsFrom); return; }
+  if (t.closest('#btn-set-cals')) {
+    const inp = $('#goal-cals');
+    const k = Math.round(Number(inp && inp.value) || 0);
+    if (k < 800 || k > 8000) { toast('Enter a target between 800 and 8,000 kcal', 'i-x'); return; }
+    S.setManualKcal(k);
+    renderToday(); renderGoals(); vib(10);
+    toast(`Calorie target locked — ${fmt(k)} kcal`);
+    return;
+  }
+  if (t.closest('#btn-clear-cals')) {
+    S.clearKcalLock();
+    const tt = S.computeTargets(S.getState().profile);
+    S.setGoals({ kcal: tt.kcal, protein: tt.protein, carbs: tt.carbs, fat: tt.fat });
+    renderToday(); renderGoals(); vib(6);
+    toast(`Back to the calculator — ${fmt(tt.kcal)} kcal`);
+    return;
+  }
   if (t.closest('#btn-ask-coach')) { if (!coachBusy) askCoach(); return; }
   if (t.closest('#btn-apply-targets')) { applyCoachPlan(); return; }
   if (t.closest('#btn-apply-program')) { applyCoachProgram(); return; }
@@ -115,7 +132,7 @@ $('#goals-body').addEventListener('change', (e) => {
   const t = e.target;
   if (t.id === 'goal-target') S.setProfile({ targetWeight: t.value ? Math.round(+t.value * 10) / 10 : null });
   else if (t.id === 'goal-rate') S.setProfile({ rate: +t.value || 0.5 });
-  else if (t.id === 'goal-cals') S.setProfile({ calPref: t.value ? Math.round(+t.value) : null });
+  else if (t.id === 'goal-cals') { /* applied by the Set button, not on blur */ }
   else if (t.id === 'goal-notes') S.setProfile({ notes: t.value.slice(0, 400) });
   else return;
   renderGoals();
@@ -245,8 +262,8 @@ function renderToday() {
   nb.hidden = !n;
   if (n) { $('#nudge-ico').textContent = n.ico; $('#nudge-txt').textContent = n.txt; nb.dataset.nact = n.act; }
 
-  countUp($('#kcal-left'), left);
-  $('#kcal-eaten').textContent = fmt(t.kcal);
+  countUp($('#kcal-eaten'), t.kcal);
+  $('#kcal-left').textContent = left >= 0 ? fmt(left) : `+${fmt(-left)}`;
   $('#kcal-goal').textContent = fmt(g.kcal);
 
   const circ = 2 * Math.PI * 104;
@@ -1263,8 +1280,15 @@ function renderGoals() {
             <option value="0.75"${+p.rate === 0.75 ? ' selected' : ''}>0.75 — ambitious</option>
           </select></label>
       </div>
-      <label class="field"><span>Want a specific daily calorie number? (optional)</span>
-        <input id="goal-cals" type="number" inputmode="numeric" min="1000" max="6000" placeholder="leave blank — the coach sets it" value="${p.calPref ?? ''}"></label>
+      <label class="field"><span>Daily calorie target — set it yourself (optional)</span>
+        <input id="goal-cals" type="number" inputmode="numeric" min="800" max="8000" placeholder="leave blank — the calculator sets it" value="${st.goals.kcalLock ? st.goals.kcal : ''}"></label>
+      <div class="chip-row wrap" style="margin-top:6px">
+        <button class="btn ghost sm-btn" id="btn-set-cals" type="button">Set my calorie target</button>
+        ${st.goals.kcalLock ? '<button class="link-btn" id="btn-clear-cals" type="button">Back to the calculator</button>' : ''}
+      </div>
+      <p class="hint muted">${st.goals.kcalLock
+        ? `Locked to your own number — <b>${fmt(st.goals.kcal)} kcal</b>. Weigh-ins and profile changes won't overwrite it until you go back to the calculator.`
+        : `Currently ${fmt(st.goals.kcal)} kcal from your stats. Type a number here to lock your own target (e.g. a short cut).`}</p>
       <label class="field"><span>Anything I should know? (optional)</span>
         <input id="goal-notes" type="text" maxlength="400" placeholder="injuries, what you enjoy, foods you avoid…" value="${esc(p.notes || '')}"></label>
     </div>
@@ -1351,7 +1375,7 @@ function applyCoachPlan() {
   if ((r.strategy === 'lose' || r.strategy === 'gain') && r.rateRecommend) patch.rate = r.rateRecommend;
   S.setProfile(patch);
   const t = S.computeTargets({ ...p, ...patch });
-  S.setGoals({ kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat });
+  S.setGoals({ kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, kcalLock: false });
   renderToday();
   renderGoals();
   vib(12);
@@ -1877,11 +1901,12 @@ $('#btn-save-profile').addEventListener('click', () => {
   };
   S.setProfile(p);
   const t = S.computeTargets(p);
-  S.setGoals({ kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat });
+  // A manual calorie target survives profile/weight edits until it is cleared.
+  if (!S.getState().goals.kcalLock) S.setGoals({ kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat });
   renderSettings();
   renderToday();
   vib(12);
-  toast(`Targets updated — ${fmt(t.kcal)} kcal`);
+  toast(S.getState().goals.kcalLock ? `Profile saved — calorie target stays locked at ${fmt(S.getState().goals.kcal)} kcal` : `Targets updated — ${fmt(t.kcal)} kcal`);
 });
 
 $('#btn-save-macros').addEventListener('click', () => {
