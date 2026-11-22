@@ -100,6 +100,12 @@ app.post('/api/parse-label', async (req, res) => {
         message: "Label photos can't be read right now — scan the barcode or enter the numbers by hand, both still work.",
       });
     }
+    if (e.message === 'ai_quota') {
+      return res.status(503).json({
+        error: 'ai_quota',
+        message: "The AI label reader has hit its monthly AI allowance — nothing is wrong with your photo. Scan the barcode or enter the numbers by hand; both work and take seconds.",
+      });
+    }
     res.status(502).json({ error: 'label_parse_failed', message: 'Could not read the label. Try again with a clearer, flatter photo.' });
   }
 });

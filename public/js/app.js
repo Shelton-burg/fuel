@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v23';
+const APP_BUILD = 'v24';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -918,8 +918,8 @@ function labelReviewModal(dataUrl) {
       close();
     })
     .catch((e) => {
-      if (/ai_key_rejected|Label reading is offline/i.test(e.message || '')) {
-        wrap.querySelector('.ai-status').outerHTML = `<div class="empty-state"><b>Can't read labels right now.</b><br>Label photos need an AI service that's switched off at the moment — nothing is wrong with your photo. Scan the barcode or type the numbers in; both work and take seconds.</div>`;
+      if (/ai_key_rejected|ai_quota|monthly AI allowance|Label reading is offline/i.test(e.message || '')) {
+        wrap.querySelector('.ai-status').outerHTML = `<div class="empty-state"><b>Can't read labels right now.</b><br>Label photos need an AI service that's unavailable at the moment — nothing is wrong with your photo. Scan the barcode or type the numbers in; both work and take seconds.</div>`;
         wrap.querySelector('.modal-title').textContent = "Can't read labels right now";
         const byHand = document.createElement('button');
         byHand.className = 'btn primary';

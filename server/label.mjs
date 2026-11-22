@@ -81,6 +81,11 @@ export async function parseLabel(base64, mimeType, apiKey) {
       const body = (await r.text()).replace(/\s+/g, ' ').slice(0, 200);
       lastErr += `[${model}] ${r.status} ${body} | `;
       if (r.status === 401 || r.status === 403) { const e = new Error('ai_key_rejected'); e.detail = lastErr; throw e; }
+      // A project-wide quota/spend cap fails EVERY model in the list — stop early
+      // and say so, instead of blaming the photo (all candidates share one project).
+      if (r.status === 429 && /spending cap|quota|resource_exhausted|billing/i.test(body)) {
+        const e = new Error('ai_quota'); e.detail = lastErr; throw e;
+      }
       continue; // try next model on failure
     }
     const j = await r.json();
