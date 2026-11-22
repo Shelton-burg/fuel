@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v26';
+const APP_BUILD = 'v27';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -1032,7 +1032,9 @@ function labelConfirmModal(dataUrl, res) {
     if (e.target.closest('[data-next]')) {
       const food = buildFood();
       if (!food.kcal) { toast('Energy value needed', 'i-x'); return; }
+      const wasFav = S.isFoodFav(food.name);
       S.saveFood(food);
+      if (!wasFav) toast('Saved to favourites ★');
       close();
       portionModal(food);
     }
@@ -1079,7 +1081,9 @@ function manualModal() {
         servingLabel: serve || null, servingGrams: grams ? parseFloat(grams) : null,
         source: 'manual',
       };
+      const wasFav = S.isFoodFav(name);
       S.saveFood(food);
+      if (!wasFav) toast('Saved to favourites ★');
       close();
       portionModal(food);
     }

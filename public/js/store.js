@@ -223,6 +223,9 @@ export function saveFood(f) {
     ids.sort((a, b) => (state.foods[b].ts || 0) - (state.foods[a].ts || 0));
     for (const old of ids.slice(300)) delete state.foods[old];
   }
+  // Anything actually logged is worth keeping one tap away — star it unless the
+  // owner deliberately un-starred it (settings.foodUnstarred).
+  if (!merged.isRecipe) ensureFoodFav(merged);
   save();
   return id;
 }
@@ -645,21 +648,40 @@ export function isFoodFav(name) {
   const k = String(name || '').toLowerCase().trim();
   return foodFavs().some((f) => String(f.name || '').toLowerCase().trim() === k);
 }
+const favShape = (food) => ({
+  name: food.name, brand: food.brand || '', basis: food.basis || '100g',
+  kcal: food.kcal, p: food.p || 0, c: food.c || 0, f: food.f || 0,
+  kcal100: food.kcal100 ?? null, servingLabel: food.servingLabel || '',
+  barcode: food.barcode || null, image: food.image || null,
+});
+export function ensureFoodFav(food) {
+  if (!food || !food.name) return false;
+  const k = String(food.name).toLowerCase().trim();
+  state.settings = state.settings || {};
+  const list = state.settings.foodFavs || [];
+  const i = list.findIndex((f) => String(f.name || '').toLowerCase().trim() === k);
+  if (i >= 0) { list[i] = { ...list[i], ...favShape(food) }; state.settings.foodFavs = list; return false; }
+  if ((state.settings.foodUnstarred || []).some((n) => String(n).toLowerCase().trim() === k)) return false;
+  list.unshift(favShape(food));
+  state.settings.foodFavs = list.slice(0, 60);
+  return true;
+}
 export function toggleFoodFav(food) {
   state.settings = state.settings || {};
   const k = String(food.name || '').toLowerCase().trim();
   const list = state.settings.foodFavs || [];
   const i = list.findIndex((f) => String(f.name || '').toLowerCase().trim() === k);
-  if (i >= 0) list.splice(i, 1);
-  else {
-    list.unshift({
-      name: food.name, brand: food.brand || '', basis: food.basis || '100g',
-      kcal: food.kcal, p: food.p || 0, c: food.c || 0, f: food.f || 0,
-      kcal100: food.kcal100 ?? null, servingLabel: food.servingLabel || '',
-      barcode: food.barcode || null, image: food.image || null,
-    });
+  if (i >= 0) {
+    list.splice(i, 1);
+    // remember the choice so logging it again doesn't silently re-star it
+    const un = (state.settings.foodUnstarred || []).filter((n) => String(n).toLowerCase().trim() !== k);
+    un.unshift(food.name);
+    state.settings.foodUnstarred = un.slice(0, 200);
+  } else {
+    list.unshift(favShape(food));
+    state.settings.foodUnstarred = (state.settings.foodUnstarred || []).filter((n) => String(n).toLowerCase().trim() !== k);
   }
-  state.settings.foodFavs = list.slice(0, 40);
+  state.settings.foodFavs = list.slice(0, 60);
   save();
   return i < 0; // true = now starred
 }
