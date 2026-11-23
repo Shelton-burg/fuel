@@ -158,7 +158,7 @@ app.post('/api/weekly', AUTH.requireUser, AUTH.aiBudget('weekly', 10), async (re
 });
 
 /* ── accounts ───────────────────────────────────────────────────────── */
-const authLimiter = AUTH.rateLimit('auth', 40, 10 * 60 * 1000);
+const authLimiter = AUTH.rateLimit('auth', 120, 10 * 60 * 1000);
 const safeUser = (u) => ({ id: u.id, name: u.name, email: u.email, hasPin: !!u.pinHash, emailVerified: !!u.emailVerified });
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
@@ -219,7 +219,7 @@ app.post('/api/auth/pin/check', AUTH.requireUser, AUTH.rateLimit('pin', 30, 10 *
 });
 
 /* ── password reset ─────────────────────────────────────────────────── */
-const resetLimiter = AUTH.rateLimit('reset', 25, 15 * 60 * 1000);
+const resetLimiter = AUTH.rateLimit('reset', 60, 15 * 60 * 1000);
 
 app.post('/api/auth/forgot', resetLimiter, async (req, res) => {
   try {
