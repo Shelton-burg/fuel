@@ -276,7 +276,7 @@ function pinScreen(user) {
     if (pin.length < 4) return;
     err.hidden = true;
     const r = await fetch('/api/auth/pin/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ pin }) });
-    if (r.ok) { window.__fuelUser = user; start(); }
+    if (r.ok) { window.__fuelUser = user; if (!user.emailVerified) return verifyScreen(user, false); start(); }
     else if (pin.length === 6) { err.textContent = 'That PIN is wrong.'; err.hidden = false; pin = ''; paint(); }
   });
 }

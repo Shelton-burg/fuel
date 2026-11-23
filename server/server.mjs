@@ -159,7 +159,7 @@ app.post('/api/weekly', AUTH.requireUser, AUTH.aiBudget('weekly', 10), async (re
 
 /* ── accounts ───────────────────────────────────────────────────────── */
 const authLimiter = AUTH.rateLimit('auth', 40, 10 * 60 * 1000);
-const safeUser = (u) => ({ id: u.id, name: u.name, email: u.email, hasPin: !!u.pinHash });
+const safeUser = (u) => ({ id: u.id, name: u.name, email: u.email, hasPin: !!u.pinHash, emailVerified: !!u.emailVerified });
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
