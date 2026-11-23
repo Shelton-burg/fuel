@@ -59,7 +59,9 @@ document.addEventListener('visibilitychange', async () => {
 });
 
 /* ── session helpers ── */
-function program() { return PROGRAMS[S.getSetting('programId')] || null; }
+function customPrograms() { return S.getSetting('customPrograms') || {}; }
+function allPrograms() { return { ...PROGRAMS, ...customPrograms() }; }
+function program() { return allPrograms()[S.getSetting('programId')] || null; }
 function todaySession() { return S.getSession(K()); }
 
 function buildSession(p, dayId) {
@@ -263,19 +265,76 @@ export function renderTrain() {
 
 /* ── picker ── */
 function pickerHTML(p) {
-  const cards = PROGRAM_LIST.map((id) => {
-    const pr = PROGRAMS[id];
-    const nEx = Object.values(pr.days).reduce((a, d) => a + d.exercises.length, 0);
-    return `<button class="prog-card${p && p.id === id ? ' cur' : ''}" data-pick="${id}" type="button">
-      <div class="pc-top"><span class="pc-name">${esc(pr.name)}</span>${p && p.id === id ? '<span class="pc-badge">Current</span>' : ''}</div>
-      <div class="pc-tag">${esc(pr.tag)}</div>
-      <p class="pc-blurb">${esc(pr.blurb)}</p>
-      <div class="pc-meta"><span>Mon &amp; Thu · Upper</span><span>Tue &amp; Fri · Lower</span><span>${nEx} exercises</span><span>${esc(pr.restLine)}</span></div>
-    </button>`;
-  }).join('');
-  return `<div class="page-head"><h1>Train</h1><p class="muted">Pick the program that matches your goal — you can switch anytime.</p></div>
+  const custom = customPrograms();
+  const customIds = Object.keys(custom);
+  const renderCard = (pr, isCustom) => {
+    const nEx = Object.values(pr.days).reduce((a, d) => a + S.planFor(pr.id, Object.keys(pr.days).find((k) => pr.days[k] === d), d.exercises).length, 0);
+    return `<div class="prog-card-wrap">
+      <button class="prog-card${p && p.id === pr.id ? ' cur' : ''}" data-pick="${esc(pr.id)}" type="button">
+        <div class="pc-top"><span class="pc-name">${esc(pr.name)}</span>${p && p.id === pr.id ? '<span class="pc-badge">Current</span>' : isCustom ? '<span class="pc-badge">Custom</span>' : ''}</div>
+        <div class="pc-tag">${esc(pr.tag || 'Custom program')}</div>
+        <p class="pc-blurb">${esc(pr.blurb || 'Your own custom 4-day split — add any exercises and sets you like.')}</p>
+        <div class="pc-meta"><span>4-day split</span><span>${nEx} exercises</span><span>${esc(pr.restLine || 'Custom rest')}</span></div>
+      </button>
+      ${isCustom ? `<button class="link-btn sm" data-delprog="${esc(pr.id)}" type="button" style="margin:4px 0 6px 4px;color:var(--bad)">Delete custom program</button>` : ''}
+    </div>`;
+  };
+  const customCards = customIds.map((id) => renderCard(custom[id], true)).join('');
+  const cards = PROGRAM_LIST.map((id) => renderCard(PROGRAMS[id], false)).join('');
+  return `<div class="page-head"><h1>Train</h1><p class="muted">Pick a program or build your own from scratch — switch anytime.</p></div>
     ${p ? '<button class="link-btn" data-act="back" type="button">← Back</button>' : ''}
-    <div class="prog-list">${cards}</div>`;
+    <button class="btn-primary wide" data-act="newprog" type="button" style="margin:8px 0 14px">+ Create custom program</button>
+    <div class="prog-list">${customCards}${cards}</div>`;
+}
+
+function openNewProgramModal() {
+  const back = document.createElement('div');
+  back.className = 'modal-backdrop';
+  back.id = 'new-prog-modal';
+  back.innerHTML = `<div class="modal">
+    <div class="modal-head"><button class="icon-btn" data-npclose type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button><div class="modal-title">Create custom program</div></div>
+    <form id="np-form" style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+      <label class="field"><span>Program name</span><input id="np-name" placeholder="e.g. My Push / Pull / Legs" maxlength="40" required></label>
+      <label class="field"><span>Goal / note (optional)</span><input id="np-blurb" placeholder="e.g. Heavy compounds + arms" maxlength="90"></label>
+      <div class="muted sm" style="margin-top:4px">Name your 4 training days (you can add exercises right after):</div>
+      <label class="field"><span>Mon (Day 1)</span><input id="np-d1" value="Day 1 · Upper A" maxlength="36"></label>
+      <label class="field"><span>Tue (Day 2)</span><input id="np-d2" value="Day 2 · Lower A" maxlength="36"></label>
+      <label class="field"><span>Thu (Day 3)</span><input id="np-d3" value="Day 3 · Upper B" maxlength="36"></label>
+      <label class="field"><span>Fri (Day 4)</span><input id="np-d4" value="Day 4 · Lower B" maxlength="36"></label>
+      <button class="btn-primary wide" type="submit" style="margin-top:6px">Create &amp; add exercises</button>
+    </form>
+  </div>`;
+  document.body.appendChild(back);
+  const close = () => back.remove();
+  back.addEventListener('click', (e) => { if (e.target === back || e.target.closest('[data-npclose]')) close(); });
+  back.querySelector('#np-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = back.querySelector('#np-name').value.trim();
+    if (!name) return;
+    const blurb = back.querySelector('#np-blurb').value.trim();
+    const d1 = back.querySelector('#np-d1').value.trim() || 'Day 1';
+    const d2 = back.querySelector('#np-d2').value.trim() || 'Day 2';
+    const d3 = back.querySelector('#np-d3').value.trim() || 'Day 3';
+    const d4 = back.querySelector('#np-d4').value.trim() || 'Day 4';
+    const id = 'custom_' + Date.now().toString(36);
+    const next = { ...customPrograms(), [id]: {
+      id, name, tag: 'Custom program', blurb: blurb || 'Built from scratch.', restLine: 'Custom rest',
+      days: {
+        upperA: { label: d1, exercises: [] },
+        lowerA: { label: d2, exercises: [] },
+        upperB: { label: d3, exercises: [] },
+        lowerB: { label: d4, exercises: [] },
+      },
+    } };
+    S.setSetting('customPrograms', next);
+    S.setSetting('programId', id);
+    ui.mode = 'auto';
+    ui.showPlan = true;
+    close();
+    renderTrain();
+    toastT(`${name} created — tap + Add exercise on any day`);
+  });
+  back.querySelector('#np-name')?.focus();
 }
 
 /* ── weekly volume (per muscle, sets done vs planned) ── */
@@ -652,6 +711,18 @@ function sessionHTML(p, s) {
 /* ── interactions ── */
 document.addEventListener('click', (e) => {
   const t = e.target;
+  const delProg = t.closest('[data-delprog]');
+  if (delProg) {
+    const id = delProg.dataset.delprog;
+    const all = { ...customPrograms() };
+    const nm = all[id]?.name || 'Custom program';
+    delete all[id];
+    S.setSetting('customPrograms', all);
+    if (S.getSetting('programId') === id) S.setSetting('programId', 'muscle');
+    toastT(`${nm} deleted`);
+    renderTrain();
+    return;
+  }
   const pick = t.closest('[data-pick]');
   if (pick) { pickProgram(pick.dataset.pick); return; }
   const exEdit = t.closest('[data-ex-edit]');
@@ -680,6 +751,7 @@ document.addEventListener('click', (e) => {
     if (a === 'finish') { finishSession(); return; }
     if (a === 'discard') { discardSession(act); return; }
     if (a === 'chgprog') { ui.mode = 'picker'; renderTrain(); return; }
+    if (a === 'newprog') { openNewProgramModal(); return; }
     if (a === 'back') { ui.mode = 'auto'; renderTrain(); return; }
     if (a === 'exs') {
       const s0 = todaySession();
