@@ -319,6 +319,7 @@ function weekStripHTML(p) {
     return `<div class="wk-day${hit ? ' done' : ''}${id === today ? ' today' : ''}">
       <span class="wk-dot">${hit ? '✓' : ''}</span>
       <span class="wk-lab">${esc(p.days[id].label.split('·')[0].trim())}</span>
+      ${id === today ? '<span class="wk-now">Today</span>' : ''}
     </div>`;
   }).join('');
   const done = Object.keys(p.days).filter((id) => wk.some((h) => h.dayId === id)).length;
@@ -338,12 +339,15 @@ function volumeHTML(p) {
       <div class="vol-bar"><i class="${on ? 'on' : ''}" style="width:${pct}%"></i></div>
     </div>`;
   }).join('');
-  const behind = rows.filter((r) => r.done < r.target * 0.75);
-  const note = behind.length
-    ? `${behind.map((b) => b.group.toLowerCase()).join(' and ')} ${behind.length === 1 ? 'is' : 'are'} behind — ${behind[0].target - behind[0].done} sets short.`
-    : 'Every muscle group is on target this week.';
+  const anyDone = rows.some((r) => r.done > 0);
+  const behind = rows.filter((r) => r.done < r.target * 0.75).sort((a, b) => (a.done / a.target) - (b.done / b.target));
+  const note = !anyDone
+    ? 'New week — nothing logged yet. Targets are your full planned sets.'
+    : behind.length
+      ? `${behind.slice(0, 2).map((b) => b.group.toLowerCase()).join(' and ')} ${behind.length === 1 ? 'is' : 'are'} furthest behind — ${behind[0].target - behind[0].done} and ${(behind[1] || behind[0]).target - (behind[1] || behind[0]).done} sets short.`
+      : 'Every muscle group is on target this week.';
   return `<div class="panel vol-panel">
-    <div class="week-head"><h2 class="ph2">Weekly volume</h2><span class="muted sm">hard sets</span></div>
+    <div class="week-head"><h2 class="ph2">Weekly volume</h2><span class="muted sm">sets this week</span></div>
     ${bars}
     <p class="hint muted sm vol-note">${esc(note)}</p>
   </div>`;
@@ -380,7 +384,7 @@ function homeHTML(p, s) {
         <span class="tc-day">${dayId ? 'Today' : 'Rest day'} · ${esc(label)}</span>
         ${custom ? '<span class="tc-rest">edited</span>' : ''}
       </div>
-      <div class="hero-meta">${plan.length} exercises · ${totalSets} sets · about ${mins} min${lastVol ? ` · last ${lastVol.toLocaleString()} kg` : ''}</div>
+      <div class="hero-meta">${plan.length} exercises · ${totalSets} sets · about ${mins} min</div>${lastVol ? `<div class="hero-last muted sm">Last time: ${lastVol.toLocaleString()} kg total</div>` : ''}
       ${s && !s.finishedAt
         ? `<button class="btn-primary wide hero-go" data-act="resume" type="button">Resume workout (${stats.sets}/${stats.total} sets)</button>`
         : `<button class="btn-primary wide hero-go" data-act="start" data-day="${dayId || nxt.id}" type="button">${dayId ? 'Start session' : 'Train anyway'}</button>`}
@@ -592,7 +596,7 @@ function sessionHTML(p, s) {
         <button class="fc-btn" data-step="r+" type="button" aria-label="More reps">+</button>
       </div>
       <button class="btn-primary wide fc-log" data-act="log" type="button">✓&nbsp; Log set</button>
-      <div class="fc-hint muted sm">Rest ${fmtRest(curEx.rest)} starts on its own · tap a set below to fix it</div>
+      <div class="fc-hint muted sm">Rest ${fmtRest(curEx.rest)} auto-starts after you log · tap a set below to edit it</div>
     </div>`;
 
   const rows = s.ex.map((ex, ei) => {
@@ -625,7 +629,7 @@ function sessionHTML(p, s) {
           <span class="ex-sub">${ex.sets.length} × ${esc(ex.reps)} · rest ${fmtRest(ex.rest)}</span></div>
         <span class="ex-head-r">${done ? '<span class="ex-done-chip">Done ✓</span>' : ''}
           <button class="ex-swap" data-act="exs" data-ex="${ei}" type="button" aria-label="Change ${esc(ex.name)}"><svg><use href="#i-edit"/></svg></button>
-          <button class="link-btn" data-open="${ei}" type="button">Close</button></span>
+          <button class="link-btn" data-open="${ei}" type="button">Collapse</button></span>
       </div>
       <div class="setrow head"><span class="sr-n">Set</span><span class="sr-target">Target</span><span class="sr-in-head">kg</span><span class="sr-in-head">reps</span><span></span></div>
       ${setRows}

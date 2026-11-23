@@ -1001,3 +1001,5 @@ button.stat-chip:active { transform:scale(.96); }
 .cb-title { font-size:17.5px; line-height:1.35; margin-top:8px; font-weight:600; letter-spacing:-.01em; }
 .cb-why { margin-top:9px; line-height:1.5; }
 .cb-actions { display:flex; gap:9px; align-items:center; margin-top:14px; }
+.hero-last { margin-top:4px; }
+.wk-now { font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); font-weight:700; }
