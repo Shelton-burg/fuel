@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v27';
+const APP_BUILD = 'v28';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -2374,6 +2374,130 @@ function coachEvChip(e) {
   return `<span class="ev-chip"><b>${sign}${one(e.value)}${e.unit ? ' ' + e.unit : ''}</b>${tgt}<span>${esc(e.label)}</span></span>`;
 }
 
+/* ── weekly brief: show, then ask ── */
+function mondayKeyApp() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return S.dayKey(d);
+}
+function coachBrief() {
+  const st = S.getState();
+  const since = S.dayKey(new Date(Date.now() - 13 * 864e5));
+  const days = S.recentDays(14).filter((d) => d.key >= since);
+  const logged = days.filter((d) => d.any).length;
+  const ws = S.weightSeries().filter((w) => w.key >= since);
+  const p = st.profile, g = st.goals;
+
+  // weight trend, kg/week across the window
+  let trend = null;
+  if (ws.length >= 2) {
+    const span = (new Date(ws[ws.length - 1].key) - new Date(ws[0].key)) / 864e5;
+    if (span >= 4) trend = Math.round(((ws[ws.length - 1].kg - ws[0].kg) / (span / 7)) * 10) / 10;
+  }
+
+  // protein average over the last 7 logged days
+  const d7 = S.recentDays(7).filter((d) => d.any);
+  const pAvg = d7.length ? Math.round(d7.reduce((a, d) => a + d.totals.p, 0) / d7.length) : null;
+
+  // training this week + weakest muscle group
+  const wk = S.sessionHistory(30).filter((h) => h && h.finishedAt && h.key >= mondayKeyApp());
+  const prog = PROGRAMS[S.getSetting('programId')];
+  const plannedSessions = prog ? Object.keys(prog.days).length : 4;
+  let weakest = null;
+  if (prog) {
+    const done = {}, target = {};
+    for (const h of wk) for (const ex of h.ex || []) {
+      const grp = exGroup(ex.name); if (!grp) continue;
+      done[grp] = (done[grp] || 0) + (ex.sets || []).filter((s2) => s2.done).length;
+    }
+    for (const dayId of Object.keys(prog.days)) for (const x of S.planFor(prog.id, dayId, prog.days[dayId].exercises)) {
+      const grp = exGroup(x.name); if (!grp) continue;
+      target[grp] = (target[grp] || 0) + (x.sets || 0);
+    }
+    const rows = Object.keys(target).map((grp) => ({ grp, done: done[grp] || 0, target: target[grp] }));
+    weakest = rows.sort((a, b) => a.done / a.target - b.done / b.target)[0] || null;
+  }
+
+  // one priority, chosen from the numbers — never invented
+  let prio;
+  if (pAvg !== null && g.protein && pAvg < g.protein * 0.85) {
+    prio = {
+      kind: 'protein',
+      title: `Lift protein from ${pAvg} g to ${g.protein} g — one 30 g snack does half of it.`,
+      why: `${logged} of 14 days logged, averaging ${pAvg} g protein against a ${g.protein} g target. Protein is what protects muscle in a deficit; it is the first thing to fix.`,
+      act: 'Show me a snack',
+    };
+  } else if (weakest && weakest.done < weakest.target * 0.75) {
+    const short = weakest.target - weakest.done;
+    prio = {
+      kind: 'volume',
+      title: `Add ${Math.min(4, short)} ${weakest.grp.toLowerCase()} sets this week — you're ${short} short.`,
+      why: `${weakest.grp} has ${weakest.done} of ${weakest.target} planned sets done this week. Everything else is closer to target, so this is the highest-value change.`,
+      act: 'Open Train',
+    };
+  } else if (trend !== null && p.goalType === 'lose' && trend >= 0) {
+    prio = {
+      kind: 'calories',
+      title: `Weight is flat at ${trend >= 0 ? '+' : ''}${trend} kg/week — tighten the target by 150 kcal.`,
+      why: `Over the last two weeks your weigh-ins show no loss against a ${g.kcal} kcal target. A small cut beats a big one.`,
+      act: 'Open targets',
+    };
+  } else {
+    prio = {
+      kind: 'ok',
+      title: 'Nothing needs changing this week — hold the current plan.',
+      why: 'Protein, training volume and weight trend are all inside range. Consistency is the win.',
+      act: null,
+    };
+  }
+
+  const trendTxt = trend === null ? 'no trend yet' : `${trend > 0 ? '+' : ''}${trend} kg/wk`;
+  const trendOk = trend === null ? null : p.goalType === 'lose' ? trend < 0 : p.goalType === 'gain' ? trend > 0 : Math.abs(trend) < 0.25;
+  return {
+    logged, wi: ws.length, sessions: wk.length, plannedSessions, pAvg, g, trend, trendTxt, trendOk,
+    weakest, prio,
+  };
+}
+
+function coachBriefHTML() {
+  const b = coachBrief();
+  const row = (label, val, cls) => `<div class="cb-row"><span class="muted">${label}</span><span class="${cls || ''}">${val}</span></div>`;
+  const trendCls = b.trendOk === null ? 'muted' : b.trendOk ? 'cb-good' : 'cb-bad';
+  const protCls = b.pAvg === null ? 'muted' : b.pAvg >= b.g.protein * 0.9 ? 'cb-good' : 'cb-bad';
+  const volCls = !b.weakest ? 'muted' : b.weakest.done >= b.weakest.target * 0.75 ? 'cb-good' : 'cb-bad';
+  return `<div class="panel cb-panel">
+    <div class="cb-head"><h2 class="ph2">This week</h2><span class="muted sm">${S.fmtDate(S.dayKey())}</span></div>
+    ${row('Weight trend', b.trendTxt, trendCls)}
+    ${row('Protein average', b.pAvg === null ? '—' : `${b.pAvg} / ${b.g.protein} g`, protCls)}
+    ${row('Training', `${b.sessions} of ${b.plannedSessions} sessions`)}
+    ${b.weakest ? row('Weakest group', `${b.weakest.grp} · ${b.weakest.done}/${b.weakest.target} sets`, volCls) : ''}
+    <div class="cb-conf muted sm">Based on ${b.logged} of 14 days logged · ${b.wi} weigh-in${b.wi === 1 ? '' : 's'} · ${b.sessions} session${b.sessions === 1 ? '' : 's'}</div>
+  </div>
+  <div class="cb-prio">
+    <div class="cb-eyebrow">Priority this week</div>
+    <div class="cb-title">${esc(b.prio.title)}</div>
+    <div class="cb-why muted sm" id="cb-why" hidden>${esc(b.prio.why)}</div>
+    <div class="cb-actions">
+      ${b.prio.act ? `<button class="btn primary sm-btn" data-brief-act="${b.prio.kind}" type="button">${esc(b.prio.act)}</button>` : ''}
+      <button class="chip" data-brief-why type="button">Why?</button>
+    </div>
+  </div>`;
+}
+
+function bindBriefActions() {
+  document.querySelectorAll('[data-brief-why]').forEach((el) => el.addEventListener('click', () => {
+    const w = $('#cb-why'); if (w) w.hidden = !w.hidden;
+  }));
+  document.querySelectorAll('[data-brief-act]').forEach((el) => el.addEventListener('click', () => {
+    const kind = el.dataset.briefAct;
+    if (kind === 'volume') switchView('train');
+    else if (kind === 'calories') { goalsFrom = 'coach'; switchView('goals'); }
+    else if (kind === 'protein') { switchView('today'); toast('A 30 g whey shake or 200 g Greek yoghurt gets you most of the way'); }
+    renderCoach();
+  }));
+}
+
 function renderCoach() {
   const el = $('#coach-body');
   if (!el) return;
@@ -2381,6 +2505,7 @@ function renderCoach() {
   const starters = ['What should I change this week?', 'How is my protein tracking?', 'Am I training shoulders enough?', 'Should I cut or maintain?'];
   const empty = !thread.length;
   el.innerHTML = `
+    ${coachBriefHTML()}
     <div class="co-thread" id="co-thread">
       ${empty ? `<div class="co-intro panel"><b>Ask me anything about your week.</b>
         <p class="muted sm">I can see your last 14 days of food, your weight and waist, every session and your muscle-group volume. Every number I quote comes from that — if there isn't enough data, I'll say so.</p></div>` : ''}
@@ -2403,6 +2528,7 @@ function renderCoach() {
     </form>`;
   const th = $('#co-thread');
   if (th) th.scrollIntoView({ block: 'end' });
+  bindBriefActions();
 }
 
 function renderCoachTeaser() {

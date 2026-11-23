@@ -914,3 +914,90 @@ button.stat-chip:active { transform:scale(.96); }
 .fl-dot { width:22px; height:22px; border-radius:6px; background:rgba(255,255,255,.06); display:flex; align-items:center; justify-content:center; font-size:11px; font-style:normal; font-family:var(--font-num); color:var(--muted); }
 .fl-rdy { font-family:var(--font-num); font-size:12px; text-align:right; }
 .meas-cell.rdy b { color:var(--amber); }
+
+/* ══════════ session focus mode (v28) ══════════ */
+.focus-card {
+  position:relative; margin:14px 0 16px; padding:20px 18px 16px;
+  border-radius:var(--r-lg);
+  background:linear-gradient(165deg, rgba(255,161,23,.13), rgba(255,161,23,.03) 42%, var(--panel-2) 100%);
+  border:1px solid rgba(255,161,23,.42);
+  box-shadow:0 14px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+}
+.fc-top { display:flex; align-items:center; justify-content:space-between; }
+.fc-eyebrow { font-size:11.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); font-weight:700; }
+.fc-name { font-size:31px; line-height:1.05; letter-spacing:-.03em; font-weight:750; margin-top:8px; font-family:var(--font-num); }
+.fc-sub { color:var(--text-2); font-size:13px; margin-top:7px; }
+.fc-step { display:flex; align-items:center; gap:12px; margin-top:14px; }
+.fc-btn {
+  width:58px; height:58px; flex:0 0 58px; border-radius:16px; border:1px solid var(--line-2);
+  background:rgba(255,255,255,.045); color:var(--text); font-size:26px; font-weight:500; line-height:1;
+  display:flex; align-items:center; justify-content:center;
+}
+.fc-btn:active { background:rgba(255,161,23,.18); transform:scale(.96); }
+.fc-val {
+  flex:1; display:flex; align-items:baseline; justify-content:center; gap:7px;
+  background:rgba(0,0,0,.28); border:1px solid var(--line-2); border-radius:16px;
+  padding:8px 10px; min-width:0;
+}
+.fc-val input {
+  width:100%; min-width:0; background:transparent; border:none; outline:none; text-align:center;
+  color:var(--text); font-family:var(--font-num); font-size:34px; font-weight:700; letter-spacing:-.02em;
+  -moz-appearance:textfield;
+}
+.fc-val input::-webkit-outer-spin-button, .fc-val input::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.fc-val span { color:var(--muted); font-size:13px; font-weight:600; letter-spacing:.04em; }
+.fc-log { margin-top:18px; padding:17px; font-size:17px; letter-spacing:.01em; }
+.fc-hint { text-align:center; margin-top:10px; font-size:11.5px; color:var(--muted); }
+
+.ex-stack { display:grid; gap:8px; }
+.ex-collapsed {
+  display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+  padding:14px 15px; border-radius:15px; border:1px solid var(--line);
+  background:var(--panel); color:var(--text-2); font-size:14px;
+}
+.ex-collapsed.done { background:rgba(61,220,151,.055); border-color:rgba(61,220,151,.18); }
+.ex-collapsed .ec-mark { color:var(--good); font-size:13px; width:14px; }
+.ex-collapsed:not(.done) .ec-mark { color:var(--muted); }
+.ex-collapsed .ec-name { flex:1; color:var(--text); font-weight:600; }
+.ex-collapsed.done .ec-name { color:var(--text-2); font-weight:500; }
+.ex-collapsed .ec-meta { color:var(--muted); font-size:12px; }
+.ex-collapsed .hrow-chev { color:var(--muted); width:15px; height:15px; }
+
+/* ══════════ train home: hero + week + volume (v28) ══════════ */
+.tcard.hero { padding:20px 18px 16px; }
+.hero-meta { color:var(--text-2); font-size:13.5px; line-height:1.45; margin-top:10px; }
+.hero-go { margin-top:16px; padding:16px; font-size:16.5px; }
+.hero-edit { display:block; margin:12px auto 0; font-size:12.5px; }
+
+.week-panel, .vol-panel { margin-top:12px; }
+.week-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.week-strip { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
+.wk-day { display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 4px; border-radius:13px; border:1px solid var(--line); background:rgba(255,255,255,.02); }
+.wk-day.today { border-color:rgba(255,161,23,.55); background:rgba(255,161,23,.08); }
+.wk-day.done .wk-dot { background:rgba(61,220,151,.18); color:var(--good); border-color:rgba(61,220,151,.4); }
+.wk-dot { width:24px; height:24px; border-radius:50%; border:1px solid var(--line-2); display:flex; align-items:center; justify-content:center; font-size:12px; color:transparent; }
+.wk-lab { font-size:10.5px; color:var(--muted); letter-spacing:.02em; text-align:center; line-height:1.2; }
+.wk-day.today .wk-lab { color:var(--text-2); }
+
+.vol-row { margin-bottom:12px; }
+.vol-row:last-of-type { margin-bottom:4px; }
+.vol-top { display:flex; justify-content:space-between; font-size:12.5px; color:var(--text-2); margin-bottom:6px; }
+.vol-low { color:var(--amber); font-weight:600; }
+.vol-bar { height:7px; border-radius:99px; background:rgba(255,255,255,.07); overflow:hidden; }
+.vol-bar i { display:block; height:100%; border-radius:99px; background:var(--amber); }
+.vol-bar i.on { background:var(--good); }
+.vol-note { margin-top:10px; }
+
+/* ══════════ coach weekly brief (v28) ══════════ */
+.cb-panel { margin-bottom:12px; }
+.cb-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:8px; }
+.cb-row { display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
+.cb-row:last-of-type { border-bottom:none; }
+.cb-good { color:var(--good); font-weight:600; }
+.cb-bad { color:var(--amber); font-weight:600; }
+.cb-conf { margin-top:10px; font-size:11.5px; color:var(--muted); line-height:1.45; }
+.cb-prio { border:1px solid rgba(255,161,23,.38); background:linear-gradient(160deg, rgba(255,161,23,.13), rgba(255,161,23,.03) 60%, var(--panel) 100%); border-radius:var(--r-md); padding:16px; margin-bottom:16px; }
+.cb-eyebrow { font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:var(--amber); font-weight:700; }
+.cb-title { font-size:17.5px; line-height:1.35; margin-top:8px; font-weight:600; letter-spacing:-.01em; }
+.cb-why { margin-top:9px; line-height:1.5; }
+.cb-actions { display:flex; gap:9px; align-items:center; margin-top:14px; }
