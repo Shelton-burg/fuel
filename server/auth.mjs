@@ -2,6 +2,9 @@
 // Users live in a PRIVATE gist (server token only). No plain-text passwords,
 // no password in logs, no user data in the token beyond id + expiry.
 import { createHash, randomBytes, scryptSync, timingSafeEqual, createHmac } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const GH = 'https://api.github.com';
 const TOKEN = process.env.GIST_TOKEN || null;
@@ -16,6 +19,22 @@ const MAX_AGE = 90 * 24 * 3600; // 90 days
 let mem = { users: {} };
 let memAt = 0;
 let gistId = null;
+let blockedUntil = 0;   // GitHub throttled us; stop hammering it
+let dirty = false;      // a write is waiting for GitHub to come back
+const CACHE_FILE = process.env.FUEL_USERS_CACHE || path.join(os.tmpdir(), 'fuel-users-cache.json');
+
+function loadDisk() {
+  try {
+    const raw = fs.readFileSync(CACHE_FILE, 'utf8');
+    const j = JSON.parse(raw);
+    if (j && j.users && Object.keys(j.users).length) { mem = { users: j.users }; return true; }
+  } catch {}
+  return false;
+}
+function saveDisk() {
+  try { fs.writeFileSync(CACHE_FILE, JSON.stringify({ users: mem.users, savedAt: Date.now() })); } catch {}
+}
+loadDisk();
 const CACHE_MS = 300000; // 5 min: GitHub secondary limits punish chatty auth reads
 
 async function gh(method, path, body) {
@@ -44,6 +63,7 @@ async function findGist() {
 async function readAll({ fresh = false } = {}) {
   if (!TOKEN) return mem;
   if (!fresh && memAt && Date.now() - memAt < CACHE_MS) return mem;
+  if (Date.now() < blockedUntil && Object.keys(mem.users).length) return mem;
   try {
     const id = await findGist();
     const g = await gh('GET', `/gists/${id}`);
@@ -56,16 +76,41 @@ async function readAll({ fresh = false } = {}) {
     return out;
   } catch (e) {
     console.error('[auth] read failed:', e.detail || e.message);
+    if (/rate limit|403|429/i.test(String(e.message) + String(e.detail || ''))) {
+      blockedUntil = Date.now() + 2 * 60 * 1000; // back off: failed calls still burn quota
+    }
+    if (!Object.keys(mem.users).length) loadDisk();
     return mem; // never lock everyone out because GitHub blipped
   }
 }
 
 async function writeAll(data) {
-  if (!TOKEN) { mem = data; return; }
-  const id = await findGist();
-  await gh('PATCH', `/gists/${id}`, { files: { [FILE]: { content: JSON.stringify(data) } } });
-  mem = data; memAt = Date.now();
+  mem = data;
+  memAt = Date.now();
+  saveDisk();
+  if (!TOKEN) return;
+  if (Date.now() < blockedUntil) { dirty = true; return; } // keep the change locally, sync later
+  try {
+    const id = await findGist();
+    await gh('PATCH', `/gists/${id}`, { files: { [FILE]: { content: JSON.stringify(data) } } });
+    dirty = false;
+  } catch (e) {
+    if (/rate limit|403|429/i.test(String(e.message) + String(e.detail || ''))) blockedUntil = Date.now() + 2 * 60 * 1000;
+    dirty = true;
+    console.error('[auth] write deferred:', e.message);
+  }
 }
+
+// retry a deferred write once GitHub lifts the limit; no timer kept alive forever
+setInterval(async () => {
+  if (!dirty || !TOKEN || Date.now() < blockedUntil) return;
+  try {
+    const id = await findGist();
+    await gh('PATCH', `/gists/${id}`, { files: { [FILE]: { content: JSON.stringify(mem) } } });
+    dirty = false;
+    console.log('[auth] deferred write flushed');
+  } catch {}
+}, 90 * 1000).unref();
 
 /* ── passwords ───────────────────────────────────────────────────────── */
 const hashPw = (pw, salt) => scryptSync(String(pw), salt, 64).toString('hex');
