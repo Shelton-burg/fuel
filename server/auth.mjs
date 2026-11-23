@@ -14,7 +14,9 @@ const MAX_AGE = 90 * 24 * 3600; // 90 days
 
 /* ── storage ─────────────────────────────────────────────────────────── */
 let mem = { users: {} };
+let memAt = 0;
 let gistId = null;
+const CACHE_MS = 30000;
 
 async function gh(method, path, body) {
   const r = await fetch(GH + path, {
@@ -39,8 +41,9 @@ async function findGist() {
   return gistId;
 }
 
-async function readAll() {
+async function readAll({ fresh = false } = {}) {
   if (!TOKEN) return mem;
+  if (!fresh && memAt && Date.now() - memAt < CACHE_MS) return mem;
   try {
     const id = await findGist();
     const g = await gh('GET', `/gists/${id}`);
@@ -48,7 +51,9 @@ async function readAll() {
     let txt = f?.content || '{}';
     if (!f?.content && f?.raw_url) txt = await (await fetch(f.raw_url, { headers: { Authorization: `Bearer ${TOKEN}` } })).text();
     const parsed = JSON.parse(txt || '{}');
-    return parsed && parsed.users ? parsed : { users: {} };
+    const out = parsed && parsed.users ? parsed : { users: {} };
+    mem = out; memAt = Date.now();
+    return out;
   } catch (e) {
     console.error('[auth] read failed:', e.detail || e.message);
     return mem; // never lock everyone out because GitHub blipped
@@ -59,7 +64,7 @@ async function writeAll(data) {
   if (!TOKEN) { mem = data; return; }
   const id = await findGist();
   await gh('PATCH', `/gists/${id}`, { files: { [FILE]: { content: JSON.stringify(data) } } });
-  mem = data;
+  mem = data; memAt = Date.now();
 }
 
 /* ── passwords ───────────────────────────────────────────────────────── */
@@ -105,7 +110,7 @@ export async function register({ name, email, password }) {
   if (String(password || '').length < 8) throw Object.assign(new Error('weak_password'), { status: 400 });
   const nm = String(name || '').trim().slice(0, 40);
   if (!nm) throw Object.assign(new Error('bad_name'), { status: 400 });
-  const data = await readAll();
+  const data = await readAll({ fresh: true });
   if (Object.values(data.users).some((u) => u.email === em)) throw Object.assign(new Error('email_taken'), { status: 409 });
   const salt = randomBytes(16).toString('hex');
   const id = 'u_' + randomBytes(9).toString('base64url');
@@ -117,7 +122,7 @@ export async function register({ name, email, password }) {
 
 export async function login({ email, password }) {
   const em = normEmail(email);
-  const data = await readAll();
+  const data = await readAll({ fresh: true });
   const user = Object.values(data.users).find((u) => u.email === em);
   if (!user) throw Object.assign(new Error('bad_login'), { status: 401 });
   const got = Buffer.from(hashPw(password, user.salt), 'hex');
