@@ -9,7 +9,7 @@ import { mealPlan } from './mealplan.mjs';
 import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured } from './sync.mjs';
 import { sendTelegram, telegramConfigured } from './notify.mjs';
 import * as AUTH from './auth.mjs';
-import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
+import { sendMail, resetEmail, verifyEmailMessage, mailConfigured } from './mail.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 4170;
@@ -166,8 +166,16 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     const u = await AUTH.register(req.body || {});
     const rec = AUTH.newRecovery();
     await AUTH.setRecovery(u.id, rec.code);
+    // verification email: a failure here must not lose the account
+    let verifySent = false;
+    try {
+      const v = await AUTH.beginVerify(u.id);
+      const { text, html } = verifyEmailMessage({ code: v.code });
+      const sent = await sendMail({ to: u.email, subject: 'Confirm your FUEL email', text, html });
+      verifySent = !!sent.ok;
+    } catch (e) { console.error('[verify-send]', e.detail || e.message); }
     res.setHeader('Set-Cookie', AUTH.cookieHeader(u.id, u.sessionVersion || 1));
-    res.json({ ok: true, user: safeUser(u), recoveryCode: rec.code });
+    res.json({ ok: true, user: safeUser(u), recoveryCode: rec.code, verifySent });
   } catch (e) {
     const map = { bad_email: 'That email doesn’t look right.', weak_password: 'Use at least 8 characters.', bad_name: 'Add your name.', email_taken: 'An account with that email already exists — sign in instead.' };
     const code = map[e.message] ? (e.status || 400) : 502;
@@ -251,6 +259,28 @@ app.post('/api/auth/reset', resetLimiter, async (req, res) => {
       : e.message === 'bad_recovery' ? 'That recovery code does not match this account.'
       : 'That code is wrong or has expired.';
     res.status(e.status || 400).json({ error: e.message || 'reset_failed', message: msg });
+  }
+});
+
+app.post('/api/auth/verify/send', AUTH.requireUser, AUTH.rateLimit('verify', 10, 15 * 60 * 1000), async (req, res) => {
+  try {
+    const v = await AUTH.beginVerify(req.user.id);
+    const { text, html } = verifyEmailMessage({ code: v.code });
+    const sent = await sendMail({ to: req.user.email, subject: 'Confirm your FUEL email', text, html });
+    res.json({ ok: true, mailed: !!sent.ok, mailConfigured: mailConfigured() });
+  } catch (e) {
+    console.error('[verify-send]', e.detail || e.message);
+    res.status(502).json({ error: 'verify_failed', message: 'Could not send the code right now.' });
+  }
+});
+
+app.post('/api/auth/verify', AUTH.requireUser, AUTH.rateLimit('verify-check', 20, 15 * 60 * 1000), async (req, res) => {
+  try {
+    await AUTH.verifyEmail(req.user.id, req.body?.code);
+    res.json({ ok: true, user: safeUser({ ...req.user, emailVerified: true }) });
+  } catch (e) {
+    const msg = e.message === 'too_many' ? 'Too many tries — send a new code.' : 'That code is wrong or has expired.';
+    res.status(e.status || 400).json({ error: e.message || 'verify_failed', message: msg });
   }
 });
 

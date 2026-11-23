@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v38';
+const APP_BUILD = 'v39';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -1842,7 +1842,11 @@ function renderAccountPanel() {
   if (!u) { el.innerHTML = '<p class="hint muted">Not signed in.</p>'; return; }
   el.innerHTML = `
     <p class="sm" style="margin-bottom:4px"><b>${esc(u.name)}</b></p>
-    <p class="muted sm" style="margin-bottom:12px">${esc(u.email)}${u.hasPin ? ' · PIN unlock on' : ' · no PIN set'}</p>
+    <p class="muted sm" style="margin-bottom:12px">${esc(u.email)} · ${u.emailVerified ? '<span class="cb-good">email verified ✓</span>' : '<span class="cb-bad">email not verified</span>'}</p>
+    <div id="acc-verify">${u.emailVerified ? '' : `
+      <label class="field"><span>Verification code</span><input id="acc-vcode" type="text" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code"></label>
+      <button class="btn ghost" id="btn-verify-mail" type="button">Verify email</button>
+      <button class="link-btn" id="btn-resend-verify" type="button" style="display:block;margin-top:8px">Send a new code</button>`}</div>
     <label class="field"><span>${u.hasPin ? 'Change PIN' : 'Set a 4–6 digit PIN'}</span>
       <input id="acc-pin" type="tel" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="off"></label>
     <button class="btn ghost" id="btn-save-pin" type="button">Save PIN</button>
@@ -1892,6 +1896,27 @@ document.addEventListener('click', async (e) => {
       if (!r.ok || !j.recoveryCode) throw new Error(j.message || 'Could not make one');
       const box = $('#acc-newrec');
       if (box) box.innerHTML = `<div class="recovery-code">${esc(j.recoveryCode)}</div><p class="hint muted">Save it now — it replaces the old code and is only shown once.</p>`;
+    } catch (ex) { toast(String(ex.message || ex).slice(0, 60), 'i-x'); }
+    return;
+  }
+  if (t.closest('#btn-resend-verify')) {
+    try {
+      const r = await fetch('/api/auth/verify/send', { method: 'POST', credentials: 'same-origin' });
+      const j = await r.json().catch(() => ({}));
+      toast(j.mailed ? 'Code sent — check your inbox' : 'Could not send it right now', j.mailed ? undefined : 'i-x');
+    } catch { toast('Could not send it right now', 'i-x'); }
+    return;
+  }
+  if (t.closest('#btn-verify-mail')) {
+    const code = ($('#acc-vcode')?.value || '').trim();
+    if (!/^[0-9]{6}$/.test(code)) { toast('Enter the 6-digit code', 'i-x'); return; }
+    try {
+      const r = await fetch('/api/auth/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ code }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.message || 'Could not verify');
+      if (window.__fuelUser) window.__fuelUser.emailVerified = true;
+      renderSettings();
+      toast('Email verified ✓');
     } catch (ex) { toast(String(ex.message || ex).slice(0, 60), 'i-x'); }
     return;
   }

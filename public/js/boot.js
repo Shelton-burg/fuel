@@ -106,7 +106,56 @@ function recoveryScreen(user, code) {
   $('#rec-copy', root).addEventListener('click', () => {
     navigator.clipboard?.writeText(code).then(() => { $('#rec-copy').textContent = 'Copied ✓'; }).catch(() => {});
   });
-  $('#rec-done', root).addEventListener('click', () => { window.__fuelUser = user; start(); });
+  $('#rec-done', root).addEventListener('click', () => {
+    window.__fuelUser = user;
+    if (user.emailVerified) return start();
+    return verifyScreen(user, true);
+  });
+}
+
+function verifyScreen(user, justSent) {
+  const root = screen(`
+    <div class="auth-logo">FUEL</div>
+    <h1 class="auth-h1">Confirm your email.</h1>
+    <p class="auth-sub">${justSent ? `We sent a 6-digit code to <b>${esc(user.email)}</b>.` : `Enter the 6-digit code sent to <b>${esc(user.email)}</b>.`}</p>
+    <form id="vf-form" class="auth-form">
+      <label class="field"><span>Code</span><input id="vf-code" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456" required></label>
+      <p class="auth-msg" id="vf-msg" hidden></p>
+      <p class="auth-err" id="vf-err" hidden></p>
+      <button class="btn primary wide" type="submit" id="vf-go">Verify email</button>
+    </form>
+    <button class="btn ghost wide auth-spaced" id="vf-resend" type="button">Send a new code</button>
+    <button class="link-btn auth-forgot" id="vf-later" type="button">I'll do this later</button>
+  `);
+  const msg = $('#vf-msg', root), err = $('#vf-err', root);
+  $('#vf-later', root).addEventListener('click', () => { window.__fuelUser = user; start(); });
+  $('#vf-resend', root).addEventListener('click', async () => {
+    $('#vf-resend').disabled = true;
+    try {
+      const r = await fetch('/api/auth/verify/send', { method: 'POST', credentials: 'same-origin' });
+      const j = await r.json().catch(() => ({}));
+      msg.textContent = j.mailed ? 'New code sent — check your inbox.' : 'Could not send it right now — try again in a minute.';
+      msg.hidden = false;
+    } catch { msg.textContent = 'Could not send it right now.'; msg.hidden = false; }
+    $('#vf-resend').disabled = false;
+  });
+  $('#vf-form', root).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    err.hidden = true;
+    $('#vf-go').disabled = true;
+    try {
+      const r = await fetch('/api/auth/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ code: $('#vf-code').value.trim() }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.message || 'Could not verify that code.');
+      user.emailVerified = true;
+      window.__fuelUser = user;
+      start();
+    } catch (ex) {
+      err.textContent = String(ex.message || ex);
+      err.hidden = false;
+      $('#vf-go').disabled = false;
+    }
+  });
 }
 
 function forgotScreen(msg) {

@@ -102,7 +102,7 @@ export function parseCookies(req) {
 }
 
 /* ── users ───────────────────────────────────────────────────────────── */
-export const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, slot: u.slot, hasPin: !!u.pinHash, createdAt: u.createdAt });
+export const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, slot: u.slot, hasPin: !!u.pinHash, emailVerified: !!u.emailVerified, createdAt: u.createdAt });
 
 export async function register({ name, email, password }) {
   const em = normEmail(email);
@@ -271,6 +271,39 @@ async function setPassword(uid, password) {
   u.passwordChangedAt = Date.now();
   await writeAll(data);
   return { id: u.id, sessionVersion: u.sessionVersion };
+}
+
+/* ── email verification ──────────────────────────────────────────────── */
+export async function beginVerify(id) {
+  const data = await readAll({ fresh: true });
+  const u = data.users[id];
+  if (!u) throw Object.assign(new Error('no_user'), { status: 404 });
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const salt = randomBytes(16).toString('hex');
+  u.verifySalt = salt;
+  u.verifyHash = hashPw(code, salt);
+  u.verifyExp = Date.now() + 24 * 60 * 60 * 1000;
+  u.verifyTries = 0;
+  await writeAll(data);
+  return { user: u, code };
+}
+
+export async function verifyEmail(id, code) {
+  const data = await readAll({ fresh: true });
+  const u = data.users[id];
+  const bad = Object.assign(new Error('bad_verify_code'), { status: 400 });
+  if (!u || !u.verifyHash) throw bad;
+  if (!u.verifyExp || Date.now() > u.verifyExp) throw bad;
+  if ((u.verifyTries || 0) >= 8) throw Object.assign(new Error('too_many'), { status: 429 });
+  const got = Buffer.from(hashPw(String(code || '').trim(), u.verifySalt), 'hex');
+  const want = Buffer.from(u.verifyHash, 'hex');
+  const ok = got.length === want.length && timingSafeEqual(got, want);
+  if (!ok) { u.verifyTries = (u.verifyTries || 0) + 1; await writeAll(data); throw bad; }
+  u.emailVerified = true;
+  u.verifiedAt = Date.now();
+  u.verifyHash = undefined; u.verifySalt = undefined; u.verifyExp = undefined; u.verifyTries = 0;
+  await writeAll(data);
+  return true;
 }
 
 /* ── middleware + rate limit ─────────────────────────────────────────── */

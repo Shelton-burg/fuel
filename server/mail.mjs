@@ -35,3 +35,19 @@ export function resetEmail({ code, minutes }) {
   </div>`;
   return { text, html };
 }
+
+export function verifyEmailMessage({ code }) {
+  const text = `Confirm your FUEL email with this code: ${code}
+
+It works for 24 hours. If you didn't create a FUEL account, ignore this email.`;
+  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0d0d0f;padding:32px;color:#f5f5f7">
+    <div style="max-width:440px;margin:0 auto;background:#16161a;border:1px solid #2a2a30;border-radius:16px;padding:28px">
+      <div style="letter-spacing:.3em;color:#ff9f1c;font-weight:700;font-size:12px">FUEL</div>
+      <h1 style="font-size:22px;margin:14px 0 8px">Confirm your email</h1>
+      <p style="color:#a8a8b3;font-size:14px;line-height:1.5;margin:0 0 18px">Enter this code in the app to verify your address. It expires in 24 hours.</p>
+      <div style="font-size:30px;letter-spacing:.22em;font-weight:700;background:#0d0d0f;border:1px solid #2a2a30;border-radius:12px;padding:14px 10px;text-align:center">${code}</div>
+      <p style="color:#6f6f7b;font-size:12px;line-height:1.5;margin:18px 0 0">If you didn't create a FUEL account, ignore this email.</p>
+    </div>
+  </div>`;
+  return { text, html };
+}
