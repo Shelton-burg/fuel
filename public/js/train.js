@@ -601,7 +601,7 @@ function sessionHTML(p, s) {
     if (isCur) return '';
     const open = ui.openEx === ei;
     if (!open) {
-      const best = ex.sets.filter((st) => st.done && st.w).reduce((a, b) => (b.w > a.w ? b : a), null);
+      const best = ex.sets.filter((st) => st.done && st.w).reduce((a, b) => (!a || b.w > a.w ? b : a), null);
       return `<button class="ex-collapsed${done ? ' done' : ''}" data-open="${ei}" type="button">
         <span class="ec-mark">${done ? '✓' : '○'}</span>
         <span class="ec-name">${esc(ex.name)}</span>
