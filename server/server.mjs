@@ -78,7 +78,7 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/health', (req, res) => res.json({
   ok: true, build: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || null,
   ai: !!GEMINI_KEY, coach: hasCoach, coachProvider: DEEPSEEK_KEY ? 'deepseek' : GEMINI_KEY ? 'gemini' : null,
-  sync: syncConfigured(), tg: telegramConfigured(), ab: autoConfigured(),
+  sync: syncConfigured(), tg: telegramConfigured(), ab: autoConfigured(), auth: true,
 }));
 
 app.post('/api/parse-label', AUTH.requireUser, AUTH.aiBudget('label', 80), async (req, res) => {
