@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v35';
+const APP_BUILD = 'v36';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -225,6 +225,7 @@ function switchView(v) {
   $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
   vib(6);
   if (v === 'history') { renderHistory(); renderConsistency(); }
+  if (v === 'settings') renderSettings();
   if (v === 'today') renderWeek();
   if (v === 'goals') renderGoals();
   if (v === 'coach') renderCoach();
