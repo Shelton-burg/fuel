@@ -1033,3 +1033,6 @@ button.stat-chip:active { transform:scale(.96); }
 .acc-more { margin-top:14px; border-top:1px solid var(--line); padding-top:12px; }
 .acc-more summary { cursor:pointer; font-size:13px; color:var(--text-2); }
 .acc-more .field { margin-top:12px; }
+.auth-warn { color:var(--amber); font-size:12.5px; line-height:1.5; margin:12px 0 14px; }
+.rec-check { display:flex; align-items:center; gap:9px; font-size:13px; color:var(--text-2); margin-bottom:14px; }
+.rec-check input { width:18px; height:18px; accent-color:var(--amber); }

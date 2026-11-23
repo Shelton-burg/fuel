@@ -95,12 +95,14 @@ function recoveryScreen(user, code) {
   const root = screen(`
     <div class="auth-logo">FUEL</div>
     <h1 class="auth-h1">Save your recovery code.</h1>
-    <p class="auth-sub">It is the way back in if you forget your password and can't get the email. It is shown once.</p>
+    <p class="auth-sub">It is the way back in if you forget your password and can't get the email. <b>It is shown once.</b></p>
     <div class="recovery-code" id="rec-code">${esc(code)}</div>
     <button class="btn ghost wide" id="rec-copy" type="button">Copy code</button>
-    <p class="auth-fine">Screenshot it, or put it in your password manager or notes.</p>
-    <button class="btn primary wide" id="rec-done" type="button">I've saved it — open FUEL</button>
+    <p class="auth-warn">Keep it secret — anyone with this code and your email can get into your account.</p>
+    <label class="rec-check"><input type="checkbox" id="rec-ok"> I've saved it somewhere safe</label>
+    <button class="btn primary wide" id="rec-done" type="button" disabled>Open FUEL</button>
   `);
+  $('#rec-ok', root).addEventListener('change', (e) => { $('#rec-done').disabled = !e.target.checked; });
   $('#rec-copy', root).addEventListener('click', () => {
     navigator.clipboard?.writeText(code).then(() => { $('#rec-copy').textContent = 'Copied ✓'; }).catch(() => {});
   });
