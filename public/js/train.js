@@ -580,7 +580,7 @@ function sessionHTML(p, s) {
       <div class="fc-top"><span class="fc-eyebrow">Set ${curSi + 1} of ${curEx.sets.length}</span>
         <button class="star-btn${S.isFavEx(curEx.name) ? ' on' : ''}" data-act="fav" data-ex="${esc(curEx.name)}" type="button" aria-label="Favourite ${esc(curEx.name)}"><svg><use href="#i-star"/></svg></button></div>
       <div class="fc-name">${esc(curEx.name)}</div>
-      <div class="fc-sub">Target ${esc(curEx.reps)} reps${tgt ? ` · last ${fmtN(tgt.from.w, 1)} kg × ${tgt.from.rep}` : lbl ? ` · last ${fmtN(lbl.lastW, 1)} kg × ${lbl.lastR}` : ''}</div>
+      <div class="fc-sub">Target ${esc(curEx.reps)} reps${tgt && tgt.from ? ` · last ${fmtN(tgt.from.w, 1)} kg × ${tgt.from.rep}` : lbl ? ` · last ${fmtN(lbl.lastW, 1)} kg × ${lbl.lastR}` : ''}</div>
       <div class="fc-step">
         <button class="fc-btn" data-step="w-" type="button" aria-label="Less weight">−</button>
         <label class="fc-val"><input data-k="w" type="number" inputmode="decimal" step="0.5" min="0" value="${wVal}" placeholder="kg"><span>kg</span></label>
