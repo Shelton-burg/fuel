@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v44';
+const APP_BUILD = 'v45';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -233,6 +233,7 @@ function switchView(v) {
 
 /* ══════════ today render ══════════ */
 function renderAll() {
+  applyTheme(S.getSetting('theme') || 'classic');
   renderToday();
   renderSettings();
   renderCoachTeaser();
@@ -1927,9 +1928,65 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+const THEMES = [
+  { id: 'classic',   name: 'FUEL Classic',   tag: 'Default',  bg: '#07090F', panel: '#10151F', a1: '#FFA117', a2: '#FF7A00' },
+  { id: 'tron',      name: 'Tron Grid',      tag: 'Cyber',    bg: '#02060D', panel: '#071324', a1: '#00F0FF', a2: '#0088FF' },
+  { id: 'matrix',    name: 'Matrix',         tag: 'Terminal', bg: '#020804', panel: '#07160C', a1: '#00FF66', a2: '#00B84D' },
+  { id: 'light',     name: 'Daylight',       tag: 'Light',    bg: '#F4F6FA', panel: '#FFFFFF', a1: '#EA580C', a2: '#F97316' },
+  { id: 'crimson',   name: 'Crimson Iron',   tag: 'Gym',      bg: '#0B0708', panel: '#170E10', a1: '#FF3B4E', a2: '#C81D32' },
+  { id: 'synthwave', name: 'Synthwave',      tag: 'Retro',    bg: '#0D061A', panel: '#180D2E', a1: '#FF2E93', a2: '#9D4EDD' },
+  { id: 'emerald',   name: 'Emerald Forest', tag: 'Calm',     bg: '#050E0B', panel: '#0C1C16', a1: '#10B981', a2: '#059669' },
+  { id: 'gold',      name: 'Gold Luxe',      tag: 'Clean',    bg: '#08080A', panel: '#141418', a1: '#E5B84B', a2: '#B8860B' },
+  { id: 'arctic',    name: 'Arctic Ice',     tag: 'Cool',     bg: '#071018', panel: '#0E1D2B', a1: '#38BDF8', a2: '#0284C7' },
+  { id: 'olive',     name: 'Tactical Olive', tag: 'Stealth',  bg: '#0B0D0A', panel: '#151913', a1: '#C9A86A', a2: '#8F7542' },
+];
+
+function applyTheme(id) {
+  const th = THEMES.find((x) => x.id === id) || THEMES[0];
+  if (th.id === 'classic') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = th.id;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', th.bg);
+  try { localStorage.setItem('fuel-theme', th.id); } catch {}
+}
+
+function renderThemePanel() {
+  const b = $('#theme-body');
+  if (!b) return;
+  const cur = S.getSetting('theme') || 'classic';
+  b.innerHTML = `<div class="theme-grid">${THEMES.map((t) => `
+    <button class="theme-card${cur === t.id ? ' on' : ''}" data-theme-pick="${t.id}" type="button">
+      <div class="theme-top">
+        <span class="theme-name">${esc(t.name)}</span>
+        ${cur === t.id ? '<span class="theme-chk">✓</span>' : ''}
+      </div>
+      <div class="theme-dots">
+        <i style="background:${t.bg}"></i>
+        <i style="background:${t.panel}"></i>
+        <i style="background:${t.a1}"></i>
+        <i style="background:${t.a2}"></i>
+        <span class="theme-tag">${esc(t.tag)}</span>
+      </div>
+    </button>`).join('')}</div>`;
+}
+
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-theme-pick]');
+  if (!btn) return;
+  const id = btn.dataset.themePick;
+  const th = THEMES.find((x) => x.id === id);
+  if (!th) return;
+  S.setSetting('theme', th.id);
+  applyTheme(th.id);
+  renderThemePanel();
+  vib(8);
+  toast(`Theme: ${th.name}`);
+});
+
 function renderSettings() {
   const st = S.getState();
   renderAccountPanel();
+  renderThemePanel();
   const p = st.profile, g = st.goals;
   $('#set-sex').value = p.sex;
   $('#set-age').value = p.age;
