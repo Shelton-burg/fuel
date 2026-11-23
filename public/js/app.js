@@ -1852,7 +1852,7 @@ document.addEventListener('click', async (e) => {
   const t = e.target;
   if (t.closest('#btn-save-pin')) {
     const pin = ($('#acc-pin')?.value || '').trim();
-    if (!/^\d{4,6}$/.test(pin)) { toast('PIN must be 4 to 6 digits', 'i-x'); return; }
+    if (!/^[0-9]{4,6}$/.test(pin)) { toast('PIN must be 4 to 6 digits', 'i-x'); return; }
     try {
       const r = await fetch('/api/auth/pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ pin }) });
       const j = await r.json().catch(() => ({}));
