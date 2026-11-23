@@ -1003,3 +1003,26 @@ button.stat-chip:active { transform:scale(.96); }
 .cb-actions { display:flex; gap:9px; align-items:center; margin-top:14px; }
 .hero-last { margin-top:4px; }
 .wk-now { font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--amber); font-weight:700; }
+
+/* ══════════ auth gate (v33) ══════════ */
+#app[hidden] { display:none !important; }
+#auth-gate { position:fixed; inset:0; z-index:9999; background:radial-gradient(120% 70% at 50% 0%, rgba(255,138,0,.10), transparent 55%), var(--bg); overflow:auto; }
+.auth-wrap { min-height:100%; display:flex; align-items:center; justify-content:center; padding:28px 20px; }
+.auth-card { width:100%; max-width:400px; }
+.auth-logo { font-family:var(--font-num); font-size:13px; letter-spacing:.32em; color:var(--amber); font-weight:700; margin-bottom:22px; }
+.auth-h1 { font-size:30px; line-height:1.12; letter-spacing:-.03em; font-weight:700; }
+.auth-sub { color:var(--text-2); font-size:14px; line-height:1.5; margin-top:10px; }
+.auth-tabs { display:flex; gap:6px; background:rgba(255,255,255,.04); border:1px solid var(--line); border-radius:13px; padding:4px; margin:22px 0 16px; }
+.auth-tab { flex:1; padding:10px; border:none; background:transparent; color:var(--text-2); font-size:13.5px; font-weight:600; border-radius:10px; }
+.auth-tab.on { background:rgba(255,161,23,.16); color:var(--amber); }
+.auth-form .field { margin-bottom:12px; }
+.auth-err { color:var(--bad); font-size:13px; line-height:1.4; margin:4px 0 12px; }
+.auth-fine { color:var(--muted); font-size:12px; line-height:1.5; margin-top:18px; text-align:center; }
+.pin-dots { display:flex; gap:12px; justify-content:center; margin:28px 0 22px; }
+.pin-dots i { width:14px; height:14px; border-radius:50%; border:1px solid var(--line-2); }
+.pin-dots i.on { background:var(--amber); border-color:var(--amber); }
+.pin-pad { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.pin-key { padding:18px 0; font-size:22px; font-weight:600; font-family:var(--font-num); border-radius:16px; border:1px solid var(--line-2); background:rgba(255,255,255,.045); color:var(--text); }
+.pin-key:active { background:rgba(255,161,23,.18); transform:scale(.97); }
+.pin-key.ghost { color:var(--muted); font-size:16px; }
+#use-pass { display:block; margin:18px auto 0; }

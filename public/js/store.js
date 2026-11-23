@@ -3,17 +3,11 @@
 // One device, one state — unless a slot is given. `?slot=name` keeps a separate
 // local state AND a separate cloud slot, so two people never see each other's
 // food, weights or workouts. No account, no password: the link IS the profile.
-const SLOT = (() => {
-  try {
-    const q = String(new URLSearchParams(location.search).get('slot') || '').toLowerCase().trim();
-    if (/^[a-z0-9-]{1,20}$/.test(q)) { localStorage.setItem('fuel-slot', q); return q; }
-    return String(localStorage.getItem('fuel-slot') || '').toLowerCase().trim();
-  } catch { return ''; }
-})();
-if (typeof window !== 'undefined') window.__syncSlot = SLOT || undefined;
-export const slotName = () => SLOT;
+const USER = (typeof window !== 'undefined' && window.__fuelUser) || null;
+const KEY = USER?.id ? `fuel-state-v1::${USER.id}` : 'fuel-state-v1';
+const LEGACY = 'fuel-state-v1';
 
-const KEY = SLOT ? `fuel-state-v1::${SLOT}` : 'fuel-state-v1';
+export const slotName = () => (USER ? USER.email : '');
 
 export const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'];
 
@@ -32,7 +26,16 @@ function normalize(s) {
 
 function load() {
   try {
-    const raw = localStorage.getItem(KEY);
+    let raw = localStorage.getItem(KEY);
+    // first sign-in on a device that already has data: adopt it, once
+    if (!raw && USER?.id) {
+      const legacy = localStorage.getItem(LEGACY);
+      if (legacy && !localStorage.getItem(`fuel-claimed::${USER.id}`)) {
+        localStorage.setItem(KEY, legacy);
+        localStorage.setItem(`fuel-claimed::${USER.id}`, '1');
+        raw = legacy;
+      }
+    }
     if (!raw) return fresh();
     return normalize(JSON.parse(raw));
   } catch (e) {

@@ -8,6 +8,7 @@ import { coachAdvice, weeklyReview, coachChat } from './coach.mjs';
 import { mealPlan } from './mealplan.mjs';
 import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured } from './sync.mjs';
 import { sendTelegram, telegramConfigured } from './notify.mjs';
+import * as AUTH from './auth.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 4170;
@@ -80,7 +81,7 @@ app.get('/api/health', (req, res) => res.json({
   sync: syncConfigured(), tg: telegramConfigured(), ab: autoConfigured(),
 }));
 
-app.post('/api/parse-label', async (req, res) => {
+app.post('/api/parse-label', AUTH.requireUser, AUTH.aiBudget('label', 80), async (req, res) => {
   try {
     if (!GEMINI_KEY) return res.status(503).json({ error: 'ai_not_configured', message: 'AI scanner not configured yet.' });
     const { image } = req.body || {};
@@ -110,7 +111,7 @@ app.post('/api/parse-label', async (req, res) => {
   }
 });
 
-app.post('/api/coach', async (req, res) => {
+app.post('/api/coach', AUTH.requireUser, AUTH.aiBudget('coach', 40), async (req, res) => {
   try {
     if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const payload = req.body && req.body.payload;
@@ -124,7 +125,7 @@ app.post('/api/coach', async (req, res) => {
   }
 });
 
-app.post('/api/coach/chat', async (req, res) => {
+app.post('/api/coach/chat', AUTH.requireUser, AUTH.aiBudget('chat', 120), async (req, res) => {
   try {
     if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const body = req.body || {};
@@ -141,7 +142,7 @@ app.post('/api/coach/chat', async (req, res) => {
   }
 });
 
-app.post('/api/weekly', async (req, res) => {
+app.post('/api/weekly', AUTH.requireUser, AUTH.aiBudget('weekly', 10), async (req, res) => {
   try {
     if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const payload = req.body && req.body.payload;
@@ -155,9 +156,59 @@ app.post('/api/weekly', async (req, res) => {
   }
 });
 
-const slotOf = (req) => (typeof req.query.slot === 'string' && /^[a-z0-9-]{1,20}$/.test(req.query.slot) ? `prod-${req.query.slot}` : undefined);
+/* ── accounts ───────────────────────────────────────────────────────── */
+const authLimiter = AUTH.rateLimit('auth', 20, 10 * 60 * 1000);
+const safeUser = (u) => ({ id: u.id, name: u.name, email: u.email, hasPin: !!u.pinHash });
 
-app.get('/api/sync/state', async (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
+  try {
+    const u = await AUTH.register(req.body || {});
+    res.setHeader('Set-Cookie', AUTH.cookieHeader(u.id));
+    res.json({ ok: true, user: safeUser(u) });
+  } catch (e) {
+    const map = { bad_email: 'That email doesn’t look right.', weak_password: 'Use at least 8 characters.', bad_name: 'Add your name.', email_taken: 'An account with that email already exists — sign in instead.' };
+    const code = map[e.message] ? (e.status || 400) : 502;
+    if (code === 502) console.error('[auth-register]', e.detail || e.message);
+    res.status(code).json({ error: e.message || 'register_failed', message: map[e.message] || 'Could not create the account right now.' });
+  }
+});
+
+app.post('/api/auth/login', authLimiter, async (req, res) => {
+  try {
+    const u = await AUTH.login(req.body || {});
+    res.setHeader('Set-Cookie', AUTH.cookieHeader(u.id));
+    res.json({ ok: true, user: safeUser(u) });
+  } catch (e) {
+    res.status(e.status || 401).json({ error: 'bad_login', message: 'Email or password is wrong.' });
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.setHeader('Set-Cookie', AUTH.clearCookie());
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  const uid = AUTH.currentUser(req);
+  if (!uid) return res.status(401).json({ error: 'auth_required' });
+  const u = await AUTH.byId(uid);
+  if (!u) return res.status(401).json({ error: 'auth_required' });
+  res.json({ ok: true, user: safeUser(u) });
+});
+
+app.post('/api/auth/pin', AUTH.requireUser, async (req, res) => {
+  try { await AUTH.setPin(req.user.id, req.body?.pin); res.json({ ok: true }); }
+  catch (e) { res.status(e.status || 400).json({ error: e.message, message: 'PIN must be 4 to 6 digits.' }); }
+});
+
+app.post('/api/auth/pin/check', AUTH.requireUser, AUTH.rateLimit('pin', 30, 10 * 60 * 1000), async (req, res) => {
+  const ok = await AUTH.checkPin(req.user.id, req.body?.pin);
+  res.status(ok ? 200 : 401).json({ ok });
+});
+
+const slotOf = (req) => req.user?.slot || null; // accounts only — a client-supplied slot is ignored
+
+app.get('/api/sync/state', AUTH.requireUser, async (req, res) => {
   try {
     if (!syncConfigured()) return res.status(503).json({ error: 'sync_not_configured', message: 'Cloud backup is not configured on the server yet.' });
     const s = await readSync(slotOf(req));
@@ -165,7 +216,7 @@ app.get('/api/sync/state', async (req, res) => {
   } catch (e) { console.error('[sync-state]', e.detail || e.message); res.status(502).json({ error: 'sync_failed', message: 'Backup storage is unavailable right now.' }); }
 });
 
-app.get('/api/sync/blob', async (req, res) => {
+app.get('/api/sync/blob', AUTH.requireUser, async (req, res) => {
   try {
     if (!syncConfigured()) return res.status(503).json({ error: 'sync_not_configured', message: 'Cloud backup is not configured on the server yet.' });
     const s = await readSync(slotOf(req));
@@ -173,7 +224,7 @@ app.get('/api/sync/blob', async (req, res) => {
   } catch (e) { console.error('[sync-blob]', e.detail || e.message); res.status(502).json({ error: 'sync_failed', message: 'Backup storage is unavailable right now.' }); }
 });
 
-app.post('/api/sync/blob', async (req, res) => {
+app.post('/api/sync/blob', AUTH.requireUser, async (req, res) => {
   try {
     if (!syncConfigured()) return res.status(503).json({ error: 'sync_not_configured', message: 'Cloud backup is not configured on the server yet.' });
     const { blob, keyHash } = req.body || {};
@@ -192,14 +243,14 @@ app.post('/api/sync/blob', async (req, res) => {
 /* Automatic safety backup — plain JSON over HTTPS, encrypted at rest in the private
    gist with a server-held key. Zero user setup; powers auto-restore after a phone
    storage wipe. (The user-key encrypted /api/sync above remains the privacy-max option.) */
-app.get('/api/autobak', async (req, res) => {
+app.get('/api/autobak', AUTH.requireUser, async (req, res) => {
   try {
     const s = await readAuto(slotOf(req));
     res.json({ ok: true, state: s ? s.state : null, updatedAt: s ? s.updatedAt : null });
   } catch (e) { console.error('[autobak-get]', e.detail || e.message); res.status(502).json({ error: 'autobak_failed', message: 'Backup storage is unavailable right now.' }); }
 });
 
-app.post('/api/autobak', async (req, res) => {
+app.post('/api/autobak', AUTH.requireUser, async (req, res) => {
   try {
     const state = req.body && req.body.state;
     if (!state || typeof state !== 'object') return res.status(400).json({ error: 'no_state' });
@@ -209,7 +260,7 @@ app.post('/api/autobak', async (req, res) => {
   } catch (e) { console.error('[autobak-put]', e.detail || e.message); res.status(502).json({ error: 'autobak_failed', message: 'Backup failed — try again in a minute.' }); }
 });
 
-app.post('/api/mealplan', async (req, res) => {
+app.post('/api/mealplan', AUTH.requireUser, AUTH.aiBudget('meal', 20), async (req, res) => {
   try {
     if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const payload = req.body && req.body.payload;
@@ -223,7 +274,7 @@ app.post('/api/mealplan', async (req, res) => {
   }
 });
 
-app.post('/api/notify', async (req, res) => {
+app.post('/api/notify', AUTH.requireUser, async (req, res) => {
   try {
     if (!telegramConfigured()) return res.status(503).json({ error: 'tg_not_configured', message: 'Telegram is not configured on the server.' });
     const { text } = req.body || {};
