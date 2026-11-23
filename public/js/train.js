@@ -840,13 +840,25 @@ function openExSheet(mode, ei, dayId) {
   const group = cur ? exGroup(cur.name) : null;
   const inPlan = plan.map((x) => x.name);
 
+  const GROUPS = ['All', ...new Set(EX_LIB.map((x) => x.group))];
+  let activeGroup = 'All';
+
   const back = document.createElement('div');
   back.className = 'modal-backdrop';
   back.id = 'ex-sheet';
   back.innerHTML = `<div class="modal">
-    <div class="modal-head"><button class="icon-btn" data-xclose type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button><div class="modal-title">${editing ? 'Swap exercise' : 'Add exercise'}</div></div>
-    ${cur ? `<div class="ex-sheet-cur"><b>${esc(cur.name)}</b><span class="muted sm">${cur.sets} × ${esc(cur.reps)} · rest ${fmtRest(cur.rest)} between sets</span></div>` : ''}
+    <div class="modal-head"><button class="icon-btn" data-xclose type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button><div class="modal-title">${editing ? 'Edit exercise' : 'Add exercise'}</div></div>
+    ${cur ? `<div class="ex-sheet-cur">
+      <div><b>${esc(cur.name)}</b><span class="muted sm" id="ex-cur-meta">${cur.sets} × ${esc(cur.reps)} · rest ${fmtRest(cur.rest)}</span></div>
+      <div class="ex-sets-row">
+        <span class="muted sm">Sets</span>
+        <button class="ex-sets-btn" data-xsets="-1" type="button" aria-label="Fewer sets">−</button>
+        <b id="ex-sets-val">${cur.sets}</b>
+        <button class="ex-sets-btn" data-xsets="1" type="button" aria-label="More sets">+</button>
+      </div>
+    </div>` : ''}
     <div class="field"><input id="ex-q" placeholder="Search ${EX_LIB.length} exercises, or type your own" autocomplete="off"></div>
+    <div class="ex-grp-bar" id="ex-grp-bar">${GROUPS.map((g) => `<button class="ex-grp-pill${g === activeGroup ? ' on' : ''}" data-xgrp="${esc(g)}" type="button">${esc(g)}</button>`).join('')}</div>
     <div id="ex-results"></div>
     ${editing ? `<div class="ex-sheet-foot">
       <button class="btn-ghost" data-xmove="-1" type="button">↑ Move up</button>
@@ -877,6 +889,7 @@ function openExSheet(mode, ei, dayId) {
     rows = [];
     const t = q.toLowerCase().trim();
     const lib = EX_LIB.filter((x) => !inPlan.some((n) => n.toLowerCase() === x.name.toLowerCase())
+      && (activeGroup === 'All' || x.group === activeGroup)
       && (!t || x.name.toLowerCase().includes(t) || String(x.group).toLowerCase().includes(t)));
     const mine = yourExNames(inPlan).filter((n) => !t || n.toLowerCase().includes(t)).map((n) => ({ name: n }));
     let html = '';
@@ -954,8 +967,38 @@ function openExSheet(mode, ei, dayId) {
     close(); renderTrain();
   };
 
+  const changeSets = (delta) => {
+    const list = S.planFor(p.id, dayId, base);
+    if (!list[ei]) return;
+    const next = Math.max(1, Math.min(10, (list[ei].sets || 3) + delta));
+    if (next === list[ei].sets) return;
+    list[ei] = { ...list[ei], sets: next };
+    S.setPlan(p.id, dayId, list);
+    const s = live();
+    if (s && s.ex[ei]) {
+      const sets = s.ex[ei].sets;
+      while (sets.length < next) sets.push({ kg: '', reps: '', done: false });
+      while (sets.length > next && !sets[sets.length - 1].done) sets.pop();
+      S.putSession(K(), s);
+    }
+    const vEl = back.querySelector('#ex-sets-val');
+    const mEl = back.querySelector('#ex-cur-meta');
+    if (vEl) vEl.textContent = String(next);
+    if (mEl) mEl.textContent = `${next} × ${list[ei].reps} · rest ${fmtRest(list[ei].rest)}`;
+    renderTrain();
+  };
+
   back.addEventListener('click', (e) => {
     if (e.target === back || e.target.closest('[data-xclose]')) { close(); return; }
+    const grp = e.target.closest('[data-xgrp]');
+    if (grp) {
+      activeGroup = grp.dataset.xgrp;
+      back.querySelectorAll('[data-xgrp]').forEach((b) => b.classList.toggle('on', b.dataset.xgrp === activeGroup));
+      paint(input.value);
+      return;
+    }
+    const sb = e.target.closest('[data-xsets]');
+    if (sb) { changeSets(+sb.dataset.xsets); return; }
     const pk = e.target.closest('[data-xpick]');
     if (pk) { const it = rows[+pk.dataset.xpick]; if (it) choose(it); return; }
     if (e.target.closest('[data-xcustom]')) { const q = input.value.trim(); if (q) choose({ name: q }); return; }

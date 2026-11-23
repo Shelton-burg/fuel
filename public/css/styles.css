@@ -1146,3 +1146,20 @@ button.stat-chip:active { transform:scale(.96); }
 .theme-dots { display:flex; align-items:center; gap:5px; }
 .theme-dots i { width:14px; height:14px; border-radius:5px; border:1px solid rgba(255,255,255,.22); display:inline-block; }
 .theme-tag { margin-left:auto; font-size:10.5px; color:var(--muted); font-weight:600; }
+
+/* ── exercise editor: sets stepper + muscle group filter ─── */
+.ex-sets-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.ex-sets-btn {
+  width:32px; height:32px; border-radius:10px;
+  border:1px solid var(--line-2); background:var(--panel-2); color:var(--text);
+  font-size:18px; font-weight:700; line-height:1; display:inline-flex; align-items:center; justify-content:center;
+}
+.ex-sets-btn:active { transform:scale(.94); border-color:var(--amber); }
+.ex-grp-bar { display:flex; gap:6px; overflow-x:auto; padding:2px 0 10px; scrollbar-width:none; }
+.ex-grp-bar::-webkit-scrollbar { display:none; }
+.ex-grp-pill {
+  flex:0 0 auto; padding:6px 11px; border-radius:999px;
+  border:1px solid var(--line); background:var(--panel-2); color:var(--text-2);
+  font-size:12px; font-weight:600; white-space:nowrap;
+}
+.ex-grp-pill.on { border-color:var(--amber); background:var(--amber-soft); color:var(--amber); }

@@ -18,7 +18,10 @@ export function nextDayIdFor(d = new Date()) {
   return null;
 }
 
-export const PROGRAM_LIST = ['strength', 'muscle', 'lean'];
+export const PROGRAM_LIST = [
+  'strength', 'muscle', 'lean', 'speed', 'conditioning',
+  'core', 'upper', 'glutes', 'home', 'beginner',
+];
 
 export const PROGRAMS = {
   /* ─────────────────────────── 1. FOUNDATION STRENGTH ─────────────────────────── */
@@ -179,6 +182,363 @@ export const PROGRAMS = {
       },
     },
   },
+
+  /* ─────────────────────────── 4. GAIN SPEED & POWER ─────────────────────────── */
+  speed: {
+    id: 'speed',
+    name: 'Gain Speed & Power',
+    tag: 'Explosive · plyos & sprints',
+    blurb: 'Built for burst, acceleration and athletic power. Low-rep explosive lifts, box jumps, med-ball throws and sprint work with full recovery.',
+    restLine: '2:00–3:00 for max speed',
+    days: {
+      upperA: {
+        label: 'Upper A · Explosive Push',
+        exercises: [
+          { name: 'Med-Ball Chest Pass', sets: 4, reps: '6', rest: 90 },
+          { name: 'Bench Press', sets: 4, reps: '5', rest: 150 },
+          { name: 'Plyo Push-Ups', sets: 3, reps: '6', rest: 90 },
+          { name: 'Pull-Ups', sets: 4, reps: '6', rest: 120 },
+          { name: 'Med-Ball Slam', sets: 3, reps: '8', rest: 90 },
+        ],
+      },
+      lowerA: {
+        label: 'Lower A · Sprint & Jump',
+        exercises: [
+          { name: 'Box Jumps', sets: 4, reps: '5', rest: 120 },
+          { name: 'Trap-Bar Deadlift', sets: 4, reps: '4', rest: 180 },
+          { name: 'Sled Sprint', sets: 6, reps: '20 m', rest: 120 },
+          { name: 'Bulgarian Split Squat', sets: 3, reps: '6', rest: 90 },
+          { name: 'Hanging Leg Raise', sets: 3, reps: '10', rest: 60 },
+        ],
+      },
+      upperB: {
+        label: 'Upper B · Rotational Power',
+        exercises: [
+          { name: 'Med-Ball Rotational Throw', sets: 4, reps: '6', rest: 90 },
+          { name: 'Standing Overhead Press', sets: 4, reps: '5', rest: 150 },
+          { name: 'Barbell Row', sets: 4, reps: '6', rest: 120 },
+          { name: 'Face Pulls', sets: 3, reps: '15', rest: 60 },
+          { name: 'Pallof Press', sets: 3, reps: '10', rest: 60 },
+        ],
+      },
+      lowerB: {
+        label: 'Lower B · Posterior Power',
+        exercises: [
+          { name: 'Broad Jumps', sets: 4, reps: '4', rest: 120 },
+          { name: 'Back Squat', sets: 4, reps: '5', rest: 180 },
+          { name: 'Kettlebell Swing', sets: 4, reps: '12', rest: 90 },
+          { name: 'Nordic Curl', sets: 3, reps: '6', rest: 90 },
+          { name: 'Assault Bike (intervals)', sets: 6, reps: '15 s all-out', rest: 60 },
+        ],
+      },
+    },
+  },
+
+  /* ─────────────────────────── 5. ATHLETIC CONDITIONING ─────────────────────────── */
+  conditioning: {
+    id: 'conditioning',
+    name: 'Athletic Conditioning',
+    tag: 'Hybrid · strength + engine',
+    blurb: 'Strength anchors paired with high-output conditioning. Kettlebells, loaded carries, rower and bike intervals to build a relentless gas tank.',
+    restLine: '45–90 s work-density',
+    days: {
+      upperA: {
+        label: 'Upper A · Push & Engine',
+        exercises: [
+          { name: 'Dumbbell Bench Press', sets: 4, reps: '10', rest: 75 },
+          { name: 'Pull-Ups', sets: 4, reps: '8', rest: 75 },
+          { name: 'Standing Overhead Press', sets: 3, reps: '10', rest: 60 },
+          { name: 'Battle Ropes', sets: 4, reps: '30 s', rest: 45 },
+          { name: 'Rower (intervals)', sets: 6, reps: '1 min hard', rest: 60 },
+        ],
+      },
+      lowerA: {
+        label: 'Lower A · Legs & Sled',
+        exercises: [
+          { name: 'Front Squat', sets: 4, reps: '8', rest: 90 },
+          { name: 'Kettlebell Swing', sets: 4, reps: '15', rest: 60 },
+          { name: 'Walking Lunges', sets: 3, reps: '12', rest: 60 },
+          { name: 'Sled Push', sets: 5, reps: '20 m', rest: 75 },
+          { name: 'Farmer\'s Carry', sets: 4, reps: '40 m', rest: 60 },
+        ],
+      },
+      upperB: {
+        label: 'Upper B · Pull & Carry',
+        exercises: [
+          { name: 'Barbell Row', sets: 4, reps: '10', rest: 75 },
+          { name: 'Incline Dumbbell Press', sets: 3, reps: '10', rest: 75 },
+          { name: 'Seated Cable Row', sets: 3, reps: '12', rest: 60 },
+          { name: 'Med-Ball Slam', sets: 4, reps: '12', rest: 45 },
+          { name: 'Assault Bike (intervals)', sets: 8, reps: '20 s hard', rest: 40 },
+        ],
+      },
+      lowerB: {
+        label: 'Lower B · Posterior Engine',
+        exercises: [
+          { name: 'Trap-Bar Deadlift', sets: 4, reps: '8', rest: 90 },
+          { name: 'Goblet Squat', sets: 3, reps: '15', rest: 60 },
+          { name: 'Step-Ups', sets: 3, reps: '12', rest: 60 },
+          { name: 'Burpees', sets: 4, reps: '12', rest: 45 },
+          { name: 'Plank (seconds)', sets: 3, reps: '60', rest: 45 },
+        ],
+      },
+    },
+  },
+
+  /* ─────────────────────────── 6. CORE & SHRED ─────────────────────────── */
+  core: {
+    id: 'core',
+    name: 'Core & Shred',
+    tag: 'Abs + metabolic compounds',
+    blurb: 'Full-body compound anchors paired with dedicated core circuits and short rests. Built for waist tightness and visible abs on a cut.',
+    restLine: '45–60 s crisp pace',
+    days: {
+      upperA: {
+        label: 'Upper A · Push + Core',
+        exercises: [
+          { name: 'Incline Dumbbell Press', sets: 4, reps: '10-12', rest: 60 },
+          { name: 'Lat Pulldown', sets: 4, reps: '12', rest: 60 },
+          { name: 'Lateral Raises', sets: 3, reps: '15', rest: 45 },
+          { name: 'Hanging Leg Raise', sets: 4, reps: '12-15', rest: 45 },
+          { name: 'Cable Crunch', sets: 4, reps: '15', rest: 45 },
+        ],
+      },
+      lowerA: {
+        label: 'Lower A · Legs + Stability',
+        exercises: [
+          { name: 'Goblet Squat', sets: 4, reps: '12-15', rest: 60 },
+          { name: 'Romanian Deadlift', sets: 3, reps: '12', rest: 75 },
+          { name: 'Walking Lunges', sets: 3, reps: '12', rest: 60 },
+          { name: 'Ab Wheel Rollout', sets: 4, reps: '12', rest: 45 },
+          { name: 'Side Plank (seconds)', sets: 3, reps: '45', rest: 30 },
+        ],
+      },
+      upperB: {
+        label: 'Upper B · Pull + Rotation',
+        exercises: [
+          { name: 'Seated Cable Row', sets: 4, reps: '12', rest: 60 },
+          { name: 'Push-Ups', sets: 3, reps: '15-20', rest: 45 },
+          { name: 'Face Pulls', sets: 3, reps: '15', rest: 45 },
+          { name: 'Pallof Press', sets: 3, reps: '12', rest: 45 },
+          { name: 'Russian Twist', sets: 3, reps: '20', rest: 45 },
+        ],
+      },
+      lowerB: {
+        label: 'Lower B · Posterior + Finisher',
+        exercises: [
+          { name: 'Trap-Bar Deadlift', sets: 3, reps: '10', rest: 75 },
+          { name: 'Hip Thrust', sets: 3, reps: '12', rest: 60 },
+          { name: 'Dead Bug', sets: 3, reps: '12', rest: 45 },
+          { name: 'Plank (seconds)', sets: 3, reps: '60', rest: 45 },
+          { name: 'Incline Treadmill Walk', sets: 1, reps: '20 min', rest: 0 },
+        ],
+      },
+    },
+  },
+
+  /* ─────────────────────────── 7. UPPER BODY FOCUS ─────────────────────────── */
+  upper: {
+    id: 'upper',
+    name: 'Upper Body Focus',
+    tag: '3 Upper + 1 Lower · V-taper',
+    blurb: 'Extra volume for chest, back, shoulders and arms across three upper days, with one solid lower day to keep your legs strong.',
+    restLine: '60–90 s hypertrophy',
+    days: {
+      upperA: {
+        label: 'Upper A · Chest & Shoulders',
+        exercises: [
+          { name: 'Bench Press', sets: 4, reps: '8-10', rest: 90 },
+          { name: 'Incline Dumbbell Press', sets: 4, reps: '10-12', rest: 75 },
+          { name: 'Cable Fly', sets: 3, reps: '12-15', rest: 60 },
+          { name: 'Standing Overhead Press', sets: 3, reps: '8-10', rest: 90 },
+          { name: 'Lateral Raises', sets: 4, reps: '15', rest: 45 },
+        ],
+      },
+      lowerA: {
+        label: 'Lower · Full Leg Maintenance',
+        exercises: [
+          { name: 'Back Squat', sets: 4, reps: '8', rest: 120 },
+          { name: 'Romanian Deadlift', sets: 3, reps: '10', rest: 90 },
+          { name: 'Leg Press', sets: 3, reps: '12', rest: 90 },
+          { name: 'Lying Leg Curl', sets: 3, reps: '12', rest: 60 },
+          { name: 'Standing Calf Raise', sets: 4, reps: '15', rest: 45 },
+        ],
+      },
+      upperB: {
+        label: 'Upper B · Back & Rear Delts',
+        exercises: [
+          { name: 'Pull-Ups', sets: 4, reps: '8-10', rest: 90 },
+          { name: 'Barbell Row', sets: 4, reps: '8-10', rest: 90 },
+          { name: 'Lat Pulldown', sets: 3, reps: '12', rest: 75 },
+          { name: 'Seated Cable Row', sets: 3, reps: '12', rest: 75 },
+          { name: 'Face Pulls', sets: 4, reps: '15', rest: 45 },
+        ],
+      },
+      lowerB: {
+        label: 'Upper C · Arms & Pump',
+        exercises: [
+          { name: 'Close-Grip Bench Press', sets: 4, reps: '8-10', rest: 90 },
+          { name: 'EZ-Bar Curl', sets: 4, reps: '10-12', rest: 60 },
+          { name: 'Triceps Rope Pushdown', sets: 3, reps: '12-15', rest: 60 },
+          { name: 'Hammer Curl', sets: 3, reps: '12', rest: 60 },
+          { name: 'Overhead Triceps Extension', sets: 3, reps: '12-15', rest: 45 },
+        ],
+      },
+    },
+  },
+
+  /* ─────────────────────────── 8. GLUTES & LEGS FOCUS ─────────────────────────── */
+  glutes: {
+    id: 'glutes',
+    name: 'Glutes & Legs Focus',
+    tag: '3 Lower + 1 Upper · Sculpt',
+    blurb: 'Three lower-body sessions targeting glutes, hamstrings and quads, balanced with one crisp upper-body session.',
+    restLine: '75–120 s between sets',
+    days: {
+      upperA: {
+        label: 'Lower A · Glute Strength',
+        exercises: [
+          { name: 'Hip Thrust', sets: 4, reps: '8-10', rest: 120 },
+          { name: 'Romanian Deadlift', sets: 4, reps: '8-10', rest: 120 },
+          { name: 'Bulgarian Split Squat', sets: 3, reps: '10', rest: 90 },
+          { name: 'Cable Pull-Through', sets: 3, reps: '15', rest: 60 },
+          { name: 'Standing Calf Raise', sets: 3, reps: '15', rest: 45 },
+        ],
+      },
+      lowerA: {
+        label: 'Upper · Tone & Posture',
+        exercises: [
+          { name: 'Incline Dumbbell Press', sets: 3, reps: '10-12', rest: 75 },
+          { name: 'Lat Pulldown', sets: 3, reps: '10-12', rest: 75 },
+          { name: 'Seated Cable Row', sets: 3, reps: '12', rest: 60 },
+          { name: 'Lateral Raises', sets: 3, reps: '15', rest: 45 },
+          { name: 'Face Pulls', sets: 3, reps: '15', rest: 45 },
+        ],
+      },
+      upperB: {
+        label: 'Lower B · Quads & Shape',
+        exercises: [
+          { name: 'Back Squat', sets: 4, reps: '8-10', rest: 120 },
+          { name: 'Leg Press', sets: 4, reps: '12', rest: 90 },
+          { name: 'Walking Lunges', sets: 3, reps: '12', rest: 75 },
+          { name: 'Leg Extension', sets: 3, reps: '15', rest: 60 },
+          { name: 'Glute Bridge', sets: 3, reps: '15', rest: 45 },
+        ],
+      },
+      lowerB: {
+        label: 'Lower C · Posterior Pump',
+        exercises: [
+          { name: 'Sumo Deadlift', sets: 4, reps: '6-8', rest: 150 },
+          { name: 'Hip Thrust', sets: 3, reps: '12-15', rest: 90 },
+          { name: 'Step-Ups', sets: 3, reps: '12', rest: 60 },
+          { name: 'Seated Leg Curl', sets: 3, reps: '12-15', rest: 60 },
+          { name: 'Back Extension', sets: 3, reps: '15', rest: 60 },
+        ],
+      },
+    },
+  },
+
+  /* ─────────────────────────── 9. HOME / DUMBBELL ONLY ─────────────────────────── */
+  home: {
+    id: 'home',
+    name: 'Home / Dumbbell Only',
+    tag: 'Minimal gear · zero machines',
+    blurb: 'Complete 4-day Upper/Lower plan using only a pair of dumbbells and bodyweight. Zero gym machines required.',
+    restLine: '60–90 s between sets',
+    days: {
+      upperA: {
+        label: 'Upper A · DB Push & Pull',
+        exercises: [
+          { name: 'Dumbbell Bench Press', sets: 4, reps: '10-12', rest: 75 },
+          { name: 'One-Arm Dumbbell Row', sets: 4, reps: '10-12', rest: 75 },
+          { name: 'Dumbbell Shoulder Press', sets: 3, reps: '10-12', rest: 75 },
+          { name: 'Push-Ups', sets: 3, reps: '15', rest: 60 },
+          { name: 'Dumbbell Curl', sets: 3, reps: '12', rest: 60 },
+        ],
+      },
+      lowerA: {
+        label: 'Lower A · DB Squat & Hinge',
+        exercises: [
+          { name: 'Goblet Squat', sets: 4, reps: '12-15', rest: 75 },
+          { name: 'Romanian Deadlift', sets: 4, reps: '10-12', rest: 75 },
+          { name: 'Bulgarian Split Squat', sets: 3, reps: '10', rest: 75 },
+          { name: 'Glute Bridge', sets: 3, reps: '15', rest: 45 },
+          { name: 'Plank (seconds)', sets: 3, reps: '60', rest: 45 },
+        ],
+      },
+      upperB: {
+        label: 'Upper B · DB Shoulders & Arms',
+        exercises: [
+          { name: 'Incline Dumbbell Press', sets: 4, reps: '10-12', rest: 75 },
+          { name: 'One-Arm Dumbbell Row', sets: 4, reps: '12', rest: 75 },
+          { name: 'Lateral Raises', sets: 4, reps: '15', rest: 45 },
+          { name: 'Hammer Curl', sets: 3, reps: '12', rest: 60 },
+          { name: 'Dumbbell Kickbacks', sets: 3, reps: '12-15', rest: 45 },
+        ],
+      },
+      lowerB: {
+        label: 'Lower B · DB Lunges & Core',
+        exercises: [
+          { name: 'Walking Lunges', sets: 4, reps: '12', rest: 75 },
+          { name: 'Stiff-Leg Deadlift', sets: 3, reps: '12', rest: 75 },
+          { name: 'Step-Ups', sets: 3, reps: '12', rest: 60 },
+          { name: 'Standing Calf Raise', sets: 4, reps: '15', rest: 45 },
+          { name: 'Dead Bug', sets: 3, reps: '12', rest: 45 },
+        ],
+      },
+    },
+  },
+
+  /* ─────────────────────────── 10. BEGINNER FOUNDATIONS ─────────────────────────── */
+  beginner: {
+    id: 'beginner',
+    name: 'Beginner Foundations',
+    tag: '3 sets · joint-friendly starter',
+    blurb: 'Simple, approachable 4-day plan with 3 sets per move and clear targets. Perfect for building the gym habit safely.',
+    restLine: '60–90 s comfortable rest',
+    days: {
+      upperA: {
+        label: 'Upper A · Basics',
+        exercises: [
+          { name: 'Machine Chest Press', sets: 3, reps: '10-12', rest: 75 },
+          { name: 'Lat Pulldown', sets: 3, reps: '10-12', rest: 75 },
+          { name: 'Dumbbell Shoulder Press', sets: 3, reps: '10', rest: 75 },
+          { name: 'Dumbbell Curl', sets: 3, reps: '12', rest: 60 },
+          { name: 'Triceps Pushdown', sets: 3, reps: '12', rest: 60 },
+        ],
+      },
+      lowerA: {
+        label: 'Lower A · Basics',
+        exercises: [
+          { name: 'Goblet Squat', sets: 3, reps: '10-12', rest: 90 },
+          { name: 'Leg Press', sets: 3, reps: '12', rest: 90 },
+          { name: 'Seated Leg Curl', sets: 3, reps: '12', rest: 60 },
+          { name: 'Standing Calf Raise', sets: 3, reps: '15', rest: 45 },
+          { name: 'Plank (seconds)', sets: 3, reps: '40', rest: 45 },
+        ],
+      },
+      upperB: {
+        label: 'Upper B · Posture & Pull',
+        exercises: [
+          { name: 'Incline Dumbbell Press', sets: 3, reps: '10-12', rest: 75 },
+          { name: 'Seated Cable Row', sets: 3, reps: '10-12', rest: 75 },
+          { name: 'Lateral Raises', sets: 3, reps: '12-15', rest: 60 },
+          { name: 'Face Pulls', sets: 3, reps: '15', rest: 45 },
+          { name: 'Hammer Curl', sets: 3, reps: '12', rest: 60 },
+        ],
+      },
+      lowerB: {
+        label: 'Lower B · Hinge & Core',
+        exercises: [
+          { name: 'Romanian Deadlift', sets: 3, reps: '10', rest: 90 },
+          { name: 'Walking Lunges', sets: 3, reps: '10', rest: 75 },
+          { name: 'Glute Bridge', sets: 3, reps: '15', rest: 45 },
+          { name: 'Back Extension', sets: 3, reps: '12', rest: 60 },
+          { name: 'Dead Bug', sets: 3, reps: '10', rest: 45 },
+        ],
+      },
+    },
+  },
 };
 
 /* ─────────────────────────── exercise library (swap / add) ───────────────────────────
@@ -283,11 +643,23 @@ export const EX_LIB = [
   { name: 'Ab Wheel Rollout', group: 'Core', sets: 3, reps: '10-12', rest: 60 },
   { name: 'Russian Twist', group: 'Core', sets: 3, reps: '20', rest: 45 },
   { name: 'Dead Bug', group: 'Core', sets: 3, reps: '10', rest: 45 },
-  /* conditioning */
+  { name: 'Pallof Press', group: 'Core', sets: 3, reps: '10', rest: 45 },
+  /* conditioning & power */
   { name: 'Rower (intervals)', group: 'Cardio', sets: 6, reps: '1 min hard', rest: 60 },
   { name: 'Assault Bike (intervals)', group: 'Cardio', sets: 8, reps: '20 s hard', rest: 40 },
   { name: 'Incline Treadmill Walk', group: 'Cardio', sets: 1, reps: '20 min', rest: 0 },
   { name: 'Sled Push', group: 'Cardio', sets: 4, reps: '20 m', rest: 90 },
+  { name: 'Sled Sprint', group: 'Cardio', sets: 6, reps: '20 m', rest: 120 },
+  { name: 'Box Jumps', group: 'Quads', sets: 4, reps: '5', rest: 120 },
+  { name: 'Broad Jumps', group: 'Quads', sets: 4, reps: '4', rest: 120 },
+  { name: 'Kettlebell Swing', group: 'Hams & Glutes', sets: 4, reps: '15', rest: 60 },
+  { name: 'Med-Ball Chest Pass', group: 'Chest', sets: 4, reps: '6', rest: 90 },
+  { name: 'Plyo Push-Ups', group: 'Chest', sets: 3, reps: '6', rest: 90 },
+  { name: 'Med-Ball Slam', group: 'Cardio', sets: 4, reps: '10', rest: 60 },
+  { name: 'Med-Ball Rotational Throw', group: 'Core', sets: 4, reps: '6', rest: 90 },
+  { name: 'Battle Ropes', group: 'Cardio', sets: 4, reps: '30 s', rest: 45 },
+  { name: 'Farmer\'s Carry', group: 'Cardio', sets: 4, reps: '40 m', rest: 60 },
+  { name: 'Burpees', group: 'Cardio', sets: 4, reps: '12', rest: 45 },
 ];
 
 const libKey = (n) => String(n || '').toLowerCase().trim();
