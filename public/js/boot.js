@@ -37,7 +37,11 @@ async function gate() {
     if (r.ok) user = (await r.json()).user;
   } catch {}
   if (!user) return loginScreen();
-  if (!user.hasPin) { window.__fuelUser = user; return start(); }
+  if (!user.hasPin) {
+    window.__fuelUser = user;
+    if (!user.emailVerified) return verifyScreen(user, false);
+    return start();
+  }
   return pinScreen(user);
 }
 
