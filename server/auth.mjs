@@ -16,7 +16,7 @@ const MAX_AGE = 90 * 24 * 3600; // 90 days
 let mem = { users: {} };
 let memAt = 0;
 let gistId = null;
-const CACHE_MS = 30000;
+const CACHE_MS = 300000; // 5 min: GitHub secondary limits punish chatty auth reads
 
 async function gh(method, path, body) {
   const r = await fetch(GH + path, {
@@ -120,10 +120,38 @@ export async function register({ name, email, password }) {
   return user;
 }
 
+/** one read + one write: account + recovery code + verification code */
+export async function createAccount({ name, email, password }) {
+  const em = normEmail(email);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) throw Object.assign(new Error('bad_email'), { status: 400 });
+  if (String(password || '').length < 8) throw Object.assign(new Error('weak_password'), { status: 400 });
+  const nm = String(name || '').trim().slice(0, 40);
+  if (!nm) throw Object.assign(new Error('bad_name'), { status: 400 });
+  const data = await readAll({ fresh: true });
+  if (Object.values(data.users).some((u) => u.email === em)) throw Object.assign(new Error('email_taken'), { status: 409 });
+
+  const salt = randomBytes(16).toString('hex');
+  const id = 'u_' + randomBytes(9).toString('base64url');
+  const rec = newRecovery();
+  const ver = newVerify();
+  const user = {
+    id, name: nm, email: em, salt, hash: hashPw(password, salt), slot: 'acct-' + id, createdAt: Date.now(),
+    recoverySalt: rec.salt, recoveryHash: rec.hash,
+    verifySalt: ver.salt, verifyHash: ver.hash, verifyExp: Date.now() + 24 * 60 * 60 * 1000, verifyTries: 0,
+  };
+  data.users[id] = user;
+  await writeAll(data);
+  return { user, recoveryCode: rec.code, verifyCode: ver.code };
+}
+
 export async function login({ email, password }) {
   const em = normEmail(email);
-  const data = await readAll({ fresh: true });
-  const user = Object.values(data.users).find((u) => u.email === em);
+  let data = await readAll();
+  let user = Object.values(data.users).find((u) => u.email === em);
+  if (!user) {
+    data = await readAll({ fresh: true });
+    user = Object.values(data.users).find((u) => u.email === em);
+  }
   if (!user) throw Object.assign(new Error('bad_login'), { status: 401 });
   const got = Buffer.from(hashPw(password, user.salt), 'hex');
   const want = Buffer.from(user.hash, 'hex');
@@ -157,6 +185,19 @@ export async function checkPin(id, pin) {
 
 /* ── recovery codes + password reset ─────────────────────────────────── */
 const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+function makeCode(len, digits) {
+  if (digits) return String(Math.floor(100000 + Math.random() * 900000));
+  let out = '';
+  const bytes = randomBytes(Math.ceil(len / 2));
+  for (let i = 0; i < len; i++) out += ALPHABET[bytes[i] % ALPHABET.length];
+  return out;
+}
+export function newVerify() {
+  const code = makeCode(6, true);
+  const salt = randomBytes(16).toString('hex');
+  return { code, salt, hash: hashPw(code, salt) };
+}
 
 export function newRecovery() {
   let out = '';

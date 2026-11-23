@@ -163,19 +163,16 @@ const safeUser = (u) => ({ id: u.id, name: u.name, email: u.email, hasPin: !!u.p
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
-    const u = await AUTH.register(req.body || {});
-    const rec = AUTH.newRecovery();
-    await AUTH.setRecovery(u.id, rec.code);
+    const { user: u, recoveryCode, verifyCode } = await AUTH.createAccount(req.body || {});
     // verification email: a failure here must not lose the account
     let verifySent = false;
     try {
-      const v = await AUTH.beginVerify(u.id);
-      const { text, html } = verifyEmailMessage({ code: v.code });
+      const { text, html } = verifyEmailMessage({ code: verifyCode });
       const sent = await sendMail({ to: u.email, subject: 'Confirm your FUEL email', text, html });
       verifySent = !!sent.ok;
     } catch (e) { console.error('[verify-send]', e.detail || e.message); }
     res.setHeader('Set-Cookie', AUTH.cookieHeader(u.id, u.sessionVersion || 1));
-    res.json({ ok: true, user: safeUser(u), recoveryCode: rec.code, verifySent });
+    res.json({ ok: true, user: safeUser(u), recoveryCode, verifySent });
   } catch (e) {
     const map = { bad_email: 'That email doesn’t look right.', weak_password: 'Use at least 8 characters.', bad_name: 'Add your name.', email_taken: 'An account with that email already exists — sign in instead.' };
     const code = map[e.message] ? (e.status || 400) : 502;
