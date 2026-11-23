@@ -121,11 +121,13 @@ export async function pushNow(state = getState(), opts = {}) {
 
 export async function autoPull() {
   try {
+    console.log('[abk] autoPull fetch start');
     const r = await fetch('/api/autobak' + slotQS());
+    console.log('[abk] autoPull fetch done', r.status);
     const j = await r.json();
     if (!r.ok || !j.ok) return null;
     return { state: j.state, updatedAt: j.updatedAt };
-  } catch { return null; }
+  } catch (e) { console.log('[abk] autoPull error', String(e)); return null; }
 }
 
 /* reset wipes the net too (a deliberate fresh start) — tombstone keeps boots from re-restoring */
