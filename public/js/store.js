@@ -1,6 +1,19 @@
 // FUEL — state store: profile, goals, daily logs, food cache. All local.
+//
+// One device, one state — unless a slot is given. `?slot=name` keeps a separate
+// local state AND a separate cloud slot, so two people never see each other's
+// food, weights or workouts. No account, no password: the link IS the profile.
+const SLOT = (() => {
+  try {
+    const q = String(new URLSearchParams(location.search).get('slot') || '').toLowerCase().trim();
+    if (/^[a-z0-9-]{1,20}$/.test(q)) { localStorage.setItem('fuel-slot', q); return q; }
+    return String(localStorage.getItem('fuel-slot') || '').toLowerCase().trim();
+  } catch { return ''; }
+})();
+if (typeof window !== 'undefined') window.__syncSlot = SLOT || undefined;
+export const slotName = () => SLOT;
 
-const KEY = 'fuel-state-v1';
+const KEY = SLOT ? `fuel-state-v1::${SLOT}` : 'fuel-state-v1';
 
 export const MEALS = ['breakfast', 'lunch', 'dinner', 'snacks'];
 

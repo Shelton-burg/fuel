@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v31';
+const APP_BUILD = 'v32';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -1834,8 +1834,44 @@ async function maybeSendDigest(result) {
 }
 
 /* ══════════ settings ══════════ */
+function renderSlotPanel() {
+  const el = $('#slot-body');
+  if (!el) return;
+  const slot = S.slotName ? S.slotName() : '';
+  el.innerHTML = slot
+    ? `<p class="sm" style="margin-bottom:10px">This device is using the <b>${esc(slot)}</b> profile. Its food, weights and workouts are kept separate from the main profile.</p>
+       <button class="btn ghost" id="btn-slot-link" type="button">Copy ${esc(slot)}'s link</button>
+       <button class="link-btn" id="btn-slot-main" type="button" style="display:block;margin-top:10px">Back to the main profile</button>`
+    : `<p class="sm" style="margin-bottom:10px">This device is on the <b>main profile</b>. Give someone else their own link — their data stays completely separate, even on this phone.</p>
+       <label class="field"><span>Their name (one word)</span><input id="slot-name" type="text" maxlength="20" placeholder="e.g. jack" autocomplete="off"></label>
+       <button class="btn primary" id="btn-slot-create" type="button">Create their profile link</button>
+       <p class="hint muted">You'll get a link like <span class="mono">${esc(location.origin)}/?slot=jack</span> — send it to them. Opening it switches this phone to their profile.</p>`;
+}
+document.addEventListener('click', (e) => {
+  const t = e.target;
+  if (t.closest('#btn-slot-create')) {
+    const v = ($('#slot-name')?.value || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 20);
+    if (!v) { toast('Give the profile a short name', 'i-x'); return; }
+    try { localStorage.setItem('fuel-slot', v); } catch {}
+    location.href = `${location.pathname}?slot=${v}`;
+    return;
+  }
+  if (t.closest('#btn-slot-main')) {
+    try { localStorage.removeItem('fuel-slot'); } catch {}
+    location.href = location.pathname;
+    return;
+  }
+  if (t.closest('#btn-slot-link')) {
+    const slot = S.slotName ? S.slotName() : '';
+    const url = `${location.origin}/?slot=${slot}`;
+    navigator.clipboard?.writeText(url).then(() => toast('Link copied')).catch(() => toast(url));
+    return;
+  }
+});
+
 function renderSettings() {
   const st = S.getState();
+  renderSlotPanel();
   const p = st.profile, g = st.goals;
   $('#set-sex').value = p.sex;
   $('#set-age').value = p.age;
