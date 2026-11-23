@@ -50,13 +50,16 @@ if (DEMO) seedDemo();
 // storage / new phone) restore it from the on-device mirror or the automatic backup
 // BEFORE the first render. Never overwrites a device that already has data.
 ABK.bindState(() => S.getState());
+console.log('[app] module init, user=', (window.__fuelUser||{}).email || 'none');
 ABK.boot({ demo: DEMO })
   .then((r) => {
+    console.log('[app] boot resolved', JSON.stringify(r));
     renderAll();
+    console.log('[app] rendered');
     if (r && r.restoredFrom === 'cloud') toast('Welcome back — your data was restored from backup');
     else if (r && r.restoredFrom === 'device') toast('Data restored from this device\'s backup');
   })
-  .catch(() => renderAll());
+  .catch((e) => { console.error('[app] boot failed', e && e.message); renderAll(); });
 $('#btn-fab').addEventListener('click', openAddSheet);
 $('#btn-date').addEventListener('click', openDaySheet);
 $('#daynav-pill').addEventListener('click', () => setDay(S.dayKey()));
