@@ -142,11 +142,14 @@ export async function boot({ demo } = {}) {
     hookFlush();
     try {
       const st = getState();
+      console.log('[abk] boot: hasData=', hasAnyData(st||{}));
       if (st && !hasAnyData(st) && !((st.meta || {}).resetAt)) {
         const m = await mirrorRead();
+        console.log('[abk] mirror read', !!m);
         if (m && hasAnyData(m)) { adoptState(m); report.restoredFrom = 'device'; }
         else {
           const r = await autoPull();
+          console.log('[abk] autopull', r ? 'hit' : 'none');
           if (r && r.state && hasAnyData(r.state)) { adoptState(r.state); report.updatedAt = r.updatedAt; report.restoredFrom = 'cloud'; }
         }
       }
