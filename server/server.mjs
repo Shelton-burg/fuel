@@ -9,6 +9,7 @@ import { mealPlan } from './mealplan.mjs';
 import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured } from './sync.mjs';
 import { sendTelegram, telegramConfigured } from './notify.mjs';
 import * as AUTH from './auth.mjs';
+import { sendMail, resetEmail, mailConfigured } from './mail.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 4170;
@@ -163,8 +164,10 @@ const safeUser = (u) => ({ id: u.id, name: u.name, email: u.email, hasPin: !!u.p
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
     const u = await AUTH.register(req.body || {});
-    res.setHeader('Set-Cookie', AUTH.cookieHeader(u.id));
-    res.json({ ok: true, user: safeUser(u) });
+    const rec = AUTH.newRecovery();
+    await AUTH.setRecovery(u.id, rec.code);
+    res.setHeader('Set-Cookie', AUTH.cookieHeader(u.id, u.sessionVersion || 1));
+    res.json({ ok: true, user: safeUser(u), recoveryCode: rec.code });
   } catch (e) {
     const map = { bad_email: 'That email doesn’t look right.', weak_password: 'Use at least 8 characters.', bad_name: 'Add your name.', email_taken: 'An account with that email already exists — sign in instead.' };
     const code = map[e.message] ? (e.status || 400) : 502;
@@ -176,7 +179,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const u = await AUTH.login(req.body || {});
-    res.setHeader('Set-Cookie', AUTH.cookieHeader(u.id));
+    res.setHeader('Set-Cookie', AUTH.cookieHeader(u.id, u.sessionVersion || 1));
     res.json({ ok: true, user: safeUser(u) });
   } catch (e) {
     res.status(e.status || 401).json({ error: 'bad_login', message: 'Email or password is wrong.' });
@@ -189,10 +192,11 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 app.get('/api/auth/me', async (req, res) => {
-  const uid = AUTH.currentUser(req);
-  if (!uid) return res.status(401).json({ error: 'auth_required' });
-  const u = await AUTH.byId(uid);
+  const tok = AUTH.readToken(AUTH.parseCookies(req)[AUTH.COOKIE]);
+  if (!tok) return res.status(401).json({ error: 'auth_required' });
+  const u = await AUTH.byId(tok.uid);
   if (!u) return res.status(401).json({ error: 'auth_required' });
+  if ((u.sessionVersion || 1) !== (tok.v || 1)) return res.status(401).json({ error: 'session_stale' });
   res.json({ ok: true, user: safeUser(u) });
 });
 
@@ -204,6 +208,74 @@ app.post('/api/auth/pin', AUTH.requireUser, async (req, res) => {
 app.post('/api/auth/pin/check', AUTH.requireUser, AUTH.rateLimit('pin', 30, 10 * 60 * 1000), async (req, res) => {
   const ok = await AUTH.checkPin(req.user.id, req.body?.pin);
   res.status(ok ? 200 : 401).json({ ok });
+});
+
+/* ── password reset ─────────────────────────────────────────────────── */
+const resetLimiter = AUTH.rateLimit('reset', 8, 15 * 60 * 1000);
+
+app.post('/api/auth/forgot', resetLimiter, async (req, res) => {
+  try {
+    const hit = await AUTH.beginReset(req.body?.email);
+    let mailed = false;
+    if (hit) {
+      const { text, html } = resetEmail({ code: hit.code, minutes: 30 });
+      const r = await sendMail({ to: hit.user.email, subject: 'Your FUEL reset code', text, html });
+      mailed = !!r.ok;
+    }
+    // same answer either way — never reveal whether an email is registered
+    res.json({ ok: true, mailed, mailConfigured: mailConfigured() });
+  } catch (e) {
+    console.error('[forgot]', e.detail || e.message);
+    res.status(502).json({ error: 'forgot_failed', message: 'Could not send a code right now — try again in a minute.' });
+  }
+});
+
+app.post('/api/auth/reset', resetLimiter, async (req, res) => {
+  const { token, email, code, recovery, password } = req.body || {};
+  try {
+    if (token) {
+      await AUTH.resetWithToken(token, password);
+    } else if (recovery) {
+      await AUTH.resetWithRecovery(email, recovery, password);
+    } else if (email && code) {
+      const t = await AUTH.verifyResetCode(email, code);
+      await AUTH.resetWithToken(t, password);
+    } else {
+      return res.status(400).json({ error: 'missing', message: 'Enter the code from your email, or your recovery code.' });
+    }
+    res.setHeader('Set-Cookie', AUTH.clearCookie());
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = e.message === 'weak_password' ? 'Use at least 8 characters.'
+      : e.message === 'too_many' ? 'Too many tries — request a new code.'
+      : e.message === 'bad_recovery' ? 'That recovery code does not match this account.'
+      : 'That code is wrong or has expired.';
+    res.status(e.status || 400).json({ error: e.message || 'reset_failed', message: msg });
+  }
+});
+
+app.post('/api/auth/password', AUTH.requireUser, async (req, res) => {
+  try {
+    const { current, next } = req.body || {};
+    const out = await AUTH.changePassword(req.user.id, current, next);
+    res.setHeader('Set-Cookie', AUTH.cookieHeader(req.user.id, out.sessionVersion));
+    res.json({ ok: true });
+  } catch (e) {
+    const msg = e.message === 'bad_password' ? 'Your current password is wrong.'
+      : e.message === 'weak_password' ? 'Use at least 8 characters.'
+      : 'Could not change the password.';
+    res.status(e.status || 400).json({ error: e.message || 'password_failed', message: msg });
+  }
+});
+
+app.post('/api/auth/recovery', AUTH.requireUser, async (req, res) => {
+  try {
+    const rec = AUTH.newRecovery();
+    await AUTH.setRecovery(req.user.id, rec.code);
+    res.json({ ok: true, recoveryCode: rec.code });
+  } catch (e) {
+    res.status(502).json({ error: 'recovery_failed', message: 'Could not make a new recovery code.' });
+  }
 });
 
 const slotOf = (req) => req.user?.slot || null; // accounts only — a client-supplied slot is ignored

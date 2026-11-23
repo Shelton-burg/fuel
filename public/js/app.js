@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v34';
+const APP_BUILD = 'v35';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -1846,6 +1846,15 @@ function renderAccountPanel() {
       <input id="acc-pin" type="tel" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="off"></label>
     <button class="btn ghost" id="btn-save-pin" type="button">Save PIN</button>
     <p class="hint muted">The PIN unlocks this device. Your password protects the account everywhere else.</p>
+    <details class="acc-more">
+      <summary>Change password</summary>
+      <label class="field"><span>Current password</span><input id="acc-cur" type="password" autocomplete="current-password"></label>
+      <label class="field"><span>New password</span><input id="acc-new" type="password" minlength="8" autocomplete="new-password"></label>
+      <button class="btn ghost" id="btn-change-pw" type="button">Update password</button>
+      <p class="hint muted">Changing it signs out every other device.</p>
+    </details>
+    <button class="link-btn" id="btn-new-recovery" type="button" style="display:block;margin-top:12px">Get a new recovery code</button>
+    <div id="acc-newrec" class="sm" style="margin-top:8px"></div>
     <button class="btn danger" id="btn-signout" type="button" style="margin-top:14px">Sign out</button>`;
 }
 document.addEventListener('click', async (e) => {
@@ -1859,6 +1868,29 @@ document.addEventListener('click', async (e) => {
       if (!r.ok) throw new Error(j.message || 'Could not save the PIN');
       if (window.__fuelUser) window.__fuelUser.hasPin = true;
       renderSettings(); vib(10); toast('PIN saved — it will be asked for next time');
+    } catch (ex) { toast(String(ex.message || ex).slice(0, 60), 'i-x'); }
+    return;
+  }
+  if (t.closest('#btn-change-pw')) {
+    const current = ($('#acc-cur')?.value || '');
+    const next = ($('#acc-new')?.value || '');
+    if (next.length < 8) { toast('New password needs 8+ characters', 'i-x'); return; }
+    try {
+      const r = await fetch('/api/auth/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ current, next }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.message || 'Could not change it');
+      $('#acc-cur').value = ''; $('#acc-new').value = '';
+      toast('Password updated — other devices signed out');
+    } catch (ex) { toast(String(ex.message || ex).slice(0, 60), 'i-x'); }
+    return;
+  }
+  if (t.closest('#btn-new-recovery')) {
+    try {
+      const r = await fetch('/api/auth/recovery', { method: 'POST', credentials: 'same-origin' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.recoveryCode) throw new Error(j.message || 'Could not make one');
+      const box = $('#acc-newrec');
+      if (box) box.innerHTML = `<div class="recovery-code">${esc(j.recoveryCode)}</div><p class="hint muted">Save it now — it replaces the old code and is only shown once.</p>`;
     } catch (ex) { toast(String(ex.message || ex).slice(0, 60), 'i-x'); }
     return;
   }

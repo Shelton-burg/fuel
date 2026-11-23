@@ -73,8 +73,8 @@ const normEmail = (e) => String(e || '').trim().toLowerCase();
 
 /* ── sessions ────────────────────────────────────────────────────────── */
 const sign = (s) => createHmac('sha256', SECRET).update(s).digest('base64url');
-export function makeToken(uid) {
-  const body = Buffer.from(JSON.stringify({ uid, exp: Date.now() + MAX_AGE * 1000 })).toString('base64url');
+export function makeToken(uid, v = 1) {
+  const body = Buffer.from(JSON.stringify({ uid, v, exp: Date.now() + MAX_AGE * 1000 })).toString('base64url');
   return `${body}.${sign(body)}`;
 }
 export function readToken(tok) {
@@ -88,8 +88,8 @@ export function readToken(tok) {
     return p;
   } catch { return null; }
 }
-export function cookieHeader(uid) {
-  return `${COOKIE}=${makeToken(uid)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${MAX_AGE}`;
+export function cookieHeader(uid, v = 1) {
+  return `${COOKIE}=${makeToken(uid, v)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${MAX_AGE}`;
 }
 export const clearCookie = () => `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 export function parseCookies(req) {
@@ -155,6 +155,124 @@ export async function checkPin(id, pin) {
   return got.length === want.length && timingSafeEqual(got, want);
 }
 
+/* ── recovery codes + password reset ─────────────────────────────────── */
+const ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+export function newRecovery() {
+  let out = '';
+  const bytes = randomBytes(12);
+  for (let i = 0; i < 12; i++) out += ALPHABET[bytes[i] % ALPHABET.length];
+  const code = `FUEL-${out.slice(0, 4)}-${out.slice(4, 8)}-${out.slice(8, 12)}`;
+  const salt = randomBytes(16).toString('hex');
+  return { code, salt, hash: hashPw(code.replace(/-/g, '').toUpperCase(), salt) };
+}
+
+export async function setRecovery(id, code) {
+  const data = await readAll({ fresh: true });
+  const u = data.users[id];
+  if (!u) throw Object.assign(new Error('no_user'), { status: 404 });
+  const clean = String(code || '').replace(/-/g, '').toUpperCase();
+  const salt = randomBytes(16).toString('hex');
+  u.recoverySalt = salt;
+  u.recoveryHash = hashPw(clean, salt);
+  await writeAll(data);
+}
+
+export async function checkRecovery(id, code) {
+  const u = await byId(id);
+  if (!u || !u.recoveryHash) return false;
+  const clean = String(code || '').replace(/-/g, '').toUpperCase();
+  const got = Buffer.from(hashPw(clean, u.recoverySalt), 'hex');
+  const want = Buffer.from(u.recoveryHash, 'hex');
+  return got.length === want.length && timingSafeEqual(got, want);
+}
+
+/** create a 6-digit code for the account; null when the email is unknown (no enumeration) */
+export async function beginReset(email) {
+  const em = normEmail(email);
+  const data = await readAll({ fresh: true });
+  const u = Object.values(data.users).find((x) => x.email === em);
+  if (!u) return null;
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const salt = randomBytes(16).toString('hex');
+  u.resetSalt = salt;
+  u.resetHash = hashPw(code, salt);
+  u.resetExp = Date.now() + 30 * 60 * 1000;
+  u.resetTries = 0;
+  await writeAll(data);
+  return { user: u, code };
+}
+
+/** verify the emailed 6-digit code -> short-lived signed reset token */
+export async function verifyResetCode(email, code) {
+  const em = normEmail(email);
+  const data = await readAll({ fresh: true });
+  const u = Object.values(data.users).find((x) => x.email === em);
+  const bad = Object.assign(new Error('bad_code'), { status: 400 });
+  if (!u || !u.resetHash) throw bad;
+  if (!u.resetExp || Date.now() > u.resetExp) throw bad;
+  if ((u.resetTries || 0) >= 5) throw Object.assign(new Error('too_many'), { status: 429 });
+  const got = Buffer.from(hashPw(String(code || '').trim(), u.resetSalt), 'hex');
+  const want = Buffer.from(u.resetHash, 'hex');
+  const ok = got.length === want.length && timingSafeEqual(got, want);
+  if (!ok) {
+    u.resetTries = (u.resetTries || 0) + 1;
+    await writeAll(data);
+    throw bad;
+  }
+  u.resetHash = undefined;
+  u.resetSalt = undefined;
+  u.resetExp = undefined;
+  u.resetTries = 0;
+  await writeAll(data);
+  const body = Buffer.from(JSON.stringify({ uid: u.id, purpose: 'reset', exp: Date.now() + 20 * 60 * 1000 })).toString('base64url');
+  return `${body}.${sign(body)}`;
+}
+
+/** set a new password from an emailed link token */
+export async function resetWithToken(token, password) {
+  const [body, sig] = String(token || '').split('.');
+  const bad = Object.assign(new Error('bad_token'), { status: 400 });
+  if (!body || !sig) throw bad;
+  const want = sign(body);
+  if (sig.length !== want.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(want))) throw bad;
+  const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+  if (p.purpose !== 'reset' || !p.exp || p.exp < Date.now()) throw bad;
+  return setPassword(p.uid, password);
+}
+
+export async function resetWithRecovery(email, recovery, password) {
+  const em = normEmail(email);
+  const data = await readAll({ fresh: true });
+  const u = Object.values(data.users).find((x) => x.email === em);
+  if (!u) throw Object.assign(new Error('bad_recovery'), { status: 400 });
+  if (!(await checkRecovery(u.id, recovery))) throw Object.assign(new Error('bad_recovery'), { status: 400 });
+  return setPassword(u.id, password);
+}
+
+export async function changePassword(uid, current, next) {
+  const u = await byId(uid);
+  if (!u) throw Object.assign(new Error('no_user'), { status: 404 });
+  const got = Buffer.from(hashPw(current, u.salt), 'hex');
+  const want = Buffer.from(u.hash, 'hex');
+  if (got.length !== want.length || !timingSafeEqual(got, want)) throw Object.assign(new Error('bad_password'), { status: 401 });
+  return setPassword(uid, next);
+}
+
+async function setPassword(uid, password) {
+  if (String(password || '').length < 8) throw Object.assign(new Error('weak_password'), { status: 400 });
+  const data = await readAll({ fresh: true });
+  const u = data.users[uid];
+  if (!u) throw Object.assign(new Error('no_user'), { status: 404 });
+  const salt = randomBytes(16).toString('hex');
+  u.salt = salt;
+  u.hash = hashPw(password, salt);
+  u.sessionVersion = (u.sessionVersion || 1) + 1; // every old cookie dies
+  u.passwordChangedAt = Date.now();
+  await writeAll(data);
+  return { id: u.id, sessionVersion: u.sessionVersion };
+}
+
 /* ── middleware + rate limit ─────────────────────────────────────────── */
 export function currentUser(req) {
   const t = readToken(parseCookies(req)[COOKIE]);
@@ -162,10 +280,12 @@ export function currentUser(req) {
 }
 
 export async function requireUser(req, res, next) {
-  const uid = currentUser(req);
-  if (!uid) return res.status(401).json({ error: 'auth_required' });
-  const u = await byId(uid);
+  const tok = readToken(parseCookies(req)[COOKIE]);
+  if (!tok) return res.status(401).json({ error: 'auth_required' });
+  const u = await byId(tok.uid);
   if (!u) return res.status(401).json({ error: 'auth_required' });
+  // a password reset bumps sessionVersion — old cookies stop working everywhere
+  if ((u.sessionVersion || 1) !== (tok.v || 1)) return res.status(401).json({ error: 'session_stale' });
   req.user = u;
   next();
 }

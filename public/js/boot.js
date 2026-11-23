@@ -2,8 +2,11 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const demo = new URLSearchParams(location.search).has('demo');
+const params = new URLSearchParams(location.search);
+const demo = params.has('demo');
+const resetToken = params.get('reset');
 if (demo) { window.__fuelDemo = true; start(); }
+else if (resetToken) { document.getElementById('app')?.setAttribute('hidden', ''); resetLinkScreen(resetToken); }
 else gate();
 
 function start() {
@@ -51,6 +54,7 @@ function loginScreen(msg) {
       <p class="auth-err" id="au-err" hidden></p>
       <button class="btn primary wide" type="submit" id="au-go">Sign in</button>
     </form>
+    <button class="link-btn auth-forgot" id="forgot" type="button">Forgot password?</button>
     <p class="auth-fine">${msg ? esc(msg) : 'Your data is stored against your account — nobody else can read it, even with the link.'}</p>
   `);
   let mode = 'login';
@@ -64,6 +68,7 @@ function loginScreen(msg) {
     $('#au-pass').autocomplete = mode === 'register' ? 'new-password' : 'current-password';
     err.hidden = true;
   }));
+  $('#forgot', root).addEventListener('click', () => forgotScreen());
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     go.disabled = true; err.hidden = true;
@@ -75,12 +80,114 @@ function loginScreen(msg) {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.message || 'Could not sign in.');
       window.__fuelUser = j.user;
+      if (j.recoveryCode) return recoveryScreen(j.user, j.recoveryCode);
       if (j.user.hasPin) return pinScreen(j.user);
       return start();
     } catch (ex) {
       err.textContent = String(ex.message || ex);
       err.hidden = false;
       go.disabled = false;
+    }
+  });
+}
+
+function recoveryScreen(user, code) {
+  const root = screen(`
+    <div class="auth-logo">FUEL</div>
+    <h1 class="auth-h1">Save your recovery code.</h1>
+    <p class="auth-sub">It is the way back in if you forget your password and can't get the email. It is shown once.</p>
+    <div class="recovery-code" id="rec-code">${esc(code)}</div>
+    <button class="btn ghost wide" id="rec-copy" type="button">Copy code</button>
+    <p class="auth-fine">Screenshot it, or put it in your password manager or notes.</p>
+    <button class="btn primary wide" id="rec-done" type="button">I've saved it — open FUEL</button>
+  `);
+  $('#rec-copy', root).addEventListener('click', () => {
+    navigator.clipboard?.writeText(code).then(() => { $('#rec-copy').textContent = 'Copied ✓'; }).catch(() => {});
+  });
+  $('#rec-done', root).addEventListener('click', () => { window.__fuelUser = user; start(); });
+}
+
+function forgotScreen(msg) {
+  const root = screen(`
+    <div class="auth-logo">FUEL</div>
+    <h1 class="auth-h1">Reset your password.</h1>
+    <p class="auth-sub">Use the 6-digit code we email you, or the recovery code you saved when you signed up.</p>
+    <form id="fg-form" class="auth-form">
+      <label class="field"><span>Email</span><input id="fg-email" type="email" autocomplete="email" required></label>
+      <label class="field"><span>Code</span><input id="fg-code" type="text" autocapitalize="characters" autocomplete="one-time-code" placeholder="123456 or FUEL-XXXX-XXXX-XXXX" required></label>
+      <label class="field"><span>New password</span><input id="fg-pass" type="password" minlength="8" autocomplete="new-password" required></label>
+      <p class="auth-msg" id="fg-msg" ${msg ? '' : 'hidden'}>${esc(msg || '')}</p>
+      <p class="auth-err" id="fg-err" hidden></p>
+      <button class="btn primary wide" type="submit" id="fg-go">Set new password</button>
+    </form>
+    <button class="btn ghost wide auth-spaced" id="fg-send" type="button">Email me a code</button>
+    <button class="link-btn auth-forgot" id="fg-back" type="button">Back to sign in</button>
+  `);
+  const msgEl = $('#fg-msg', root), err = $('#fg-err', root);
+  $('#fg-send', root).addEventListener('click', async () => {
+    const email = $('#fg-email').value.trim();
+    if (!email) { err.textContent = 'Type your email first.'; err.hidden = false; return; }
+    $('#fg-send').disabled = true;
+    try {
+      const r = await fetch('/api/auth/forgot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+      const j = await r.json().catch(() => ({}));
+      msgEl.textContent = j.mailed ? 'Code sent — check your inbox (and spam).' : 'If that email has an account, a code is on its way.';
+      msgEl.hidden = false;
+    } catch {
+      msgEl.textContent = 'Could not send the email — use your recovery code instead.';
+      msgEl.hidden = false;
+    }
+    $('#fg-send').disabled = false;
+  });
+  $('#fg-back', root).addEventListener('click', () => loginScreen());
+  $('#fg-form', root).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    err.hidden = true;
+    const email = $('#fg-email').value.trim();
+    const code = $('#fg-code').value.trim();
+    const password = $('#fg-pass').value;
+    const isRecovery = /^FUEL-/i.test(code);
+    const body = isRecovery ? { email, recovery: code, password } : { email, code, password };
+    $('#fg-go').disabled = true;
+    try {
+      const r = await fetch('/api/auth/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.message || 'Could not reset the password.');
+      loginScreen('Password changed. Sign in with the new one.');
+    } catch (ex) {
+      err.textContent = String(ex.message || ex);
+      err.hidden = false;
+      $('#fg-go').disabled = false;
+    }
+  });
+}
+
+function resetLinkScreen(token) {
+  const root = screen(`
+    <div class="auth-logo">FUEL</div>
+    <h1 class="auth-h1">Choose a new password.</h1>
+    <p class="auth-sub">This link works once and expires in 20 minutes.</p>
+    <form id="rl-form" class="auth-form">
+      <label class="field"><span>New password</span><input id="rl-pass" type="password" minlength="8" autocomplete="new-password" required></label>
+      <p class="auth-err" id="rl-err" hidden></p>
+      <button class="btn primary wide" type="submit" id="rl-go">Save password</button>
+    </form>
+  `);
+  const err = $('#rl-err', root);
+  $('#rl-form', root).addEventListener('submit', async (e) => {
+    e.preventDefault();
+    err.hidden = true;
+    $('#rl-go').disabled = true;
+    try {
+      const r = await fetch('/api/auth/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, password: $('#rl-pass').value }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.message || 'That link has expired — request a new code.');
+      history.replaceState({}, '', location.pathname);
+      loginScreen('Password changed. Sign in with the new one.');
+    } catch (ex) {
+      err.textContent = String(ex.message || ex);
+      err.hidden = false;
+      $('#rl-go').disabled = false;
     }
   });
 }
