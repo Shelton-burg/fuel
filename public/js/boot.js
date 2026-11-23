@@ -11,7 +11,7 @@ function start() {
   if (root) root.remove();
   document.getElementById('app')?.removeAttribute('hidden');
   if (!window.__fuelTrainLoaded) { window.__fuelTrainLoaded = true; import('./train.js'); }
-  import('./app.js');
+  import('./app.js').catch((e) => console.error('[boot] app failed to start:', e && (e.stack || e.message || e)));
 }
 
 function screen(html) {
