@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v47';
+const APP_BUILD = 'v48';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -313,9 +313,45 @@ function renderToday() {
       ${items.length ? `<div class="meal-items">${rows}</div>` : ''}
     </div>`;
   }).join('');
+  renderDailyFeel();
   renderQuick();
   renderWeek();
 }
+
+let feelExpanded = false;
+function feelTone(n) { return n <= 3 ? 'low' : n >= 7 ? 'high' : 'mid'; }
+function renderDailyFeel() {
+  const el = $('#daily-feel');
+  if (!el) return;
+  const val = S.dailyFeel(selDate);
+  if (val != null && !feelExpanded) {
+    el.innerHTML = `<button class="feel-chip ${feelTone(val)}" data-feel-open type="button">
+      <span>${isToday() ? "Today's feel" : 'Day feel'}</span>
+      <b>${val}/10</b>
+      <span class="feel-edit muted">tap to change</span>
+    </button>`;
+    return;
+  }
+  const btns = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) =>
+    `<button class="feel-btn ${feelTone(n)}${val === n ? ' on' : ''}" data-dfeel="${n}" type="button">${n}</button>`
+  ).join('');
+  el.innerHTML = `<div class="feel-card">
+    <div class="feel-head"><span>${isToday() ? "How's today feeling?" : 'How did this day feel?'}</span><span class="muted">1 bad · 10 great</span></div>
+    <div class="feel-scale">${btns}</div>
+  </div>`;
+}
+
+$('#daily-feel')?.addEventListener('click', (e) => {
+  if (e.target.closest('[data-feel-open]')) { feelExpanded = true; renderDailyFeel(); return; }
+  const b = e.target.closest('[data-dfeel]');
+  if (!b) return;
+  const n = +b.dataset.dfeel;
+  S.setDailyFeel(n, selDate);
+  feelExpanded = false;
+  vib(8);
+  renderDailyFeel();
+  toast(`Daily feel logged: ${n}/10`);
+});
 
 $('#meals').addEventListener('click', (e) => {
   const del = e.target.closest('[data-del]');
@@ -1348,8 +1384,10 @@ function coachPayload() {
       programId: S.getSetting('programId') || null,
       sessionsTotal: fin.length,
       sessionsLast28d: fin.filter((h) => h.key >= cutoff).length,
+      avgSessionFeel: (() => { const sf = fin.filter((h) => Number.isInteger(h.feel)); return sf.length ? Math.round((sf.reduce((a, h) => a + h.feel, 0) / sf.length) * 10) / 10 : null; })(),
       topExercises: Object.values(exAgg).sort((a, b) => b.sessions - a.sessions).slice(0, 10).map((e2) => ({ name: e2.name, bestKg: e2.bestW, sessions: e2.sessions })),
     },
+    dailyFeel: (() => { const df = S.recentDailyFeel(14); return { today: S.dailyFeel(), daysRated: df.length, avg14d: df.length ? Math.round((df.reduce((a, x) => a + x.score, 0) / df.length) * 10) / 10 : null }; })(),
   };
 }
 
@@ -2505,7 +2543,17 @@ function coachContext() {
       goalMl: S.waterGoal(),
       avg7Ml: (() => { const w = S.waterSeries(7).filter((d) => d.ml > 0); return w.length ? Math.round(w.reduce((a, d) => a + d.ml, 0) / w.length) : null; })(),
     },
-    feel: (() => { const f = S.avgFeeling(7); return { days: f.days, energy: f.energy, mood: f.mood, soreness: f.soreness, hunger: f.hunger, readiness: f.readiness }; })(),
+    feel: (() => {
+      const f = S.avgFeeling(7);
+      const df = S.recentDailyFeel(7);
+      const sf = fin.slice(0, 8).filter((h) => Number.isInteger(h.feel));
+      return {
+        days: f.days, energy: f.energy, mood: f.mood, soreness: f.soreness, hunger: f.hunger, readiness: f.readiness,
+        dailyToday: S.dailyFeel(),
+        dailyAvg7d: df.length ? Math.round((df.reduce((a, x) => a + x.score, 0) / df.length) * 10) / 10 : null,
+        sessionAvg: sf.length ? Math.round((sf.reduce((a, h) => a + h.feel, 0) / sf.length) * 10) / 10 : null,
+      };
+    })(),
     last7: rd.slice(0, 7).map((d) => ({ key: d.key, kcal: d.totals.kcal, protein: Math.round(d.totals.p), logged: d.any })),
     allowed: {
       kcal: [round10(g.kcal * 0.9), round10(g.kcal * 0.95), g.kcal, round10(g.kcal * 1.05)].filter((v, i, a) => a.indexOf(v) === i),

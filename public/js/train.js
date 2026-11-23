@@ -429,10 +429,18 @@ function homeHTML(p, s) {
 
   let today;
   if (finishedToday) {
+    const sfTone = (n) => (n <= 3 ? 'low' : n >= 7 ? 'high' : 'mid');
+    const sfHTML = Number.isInteger(s.feel) && !ui.editSfeel
+      ? `<button class="feel-chip ${sfTone(s.feel)}" data-sfeel-open type="button" style="margin-top:10px"><span>Session feel</span><b>${s.feel}/10</b><span class="feel-edit muted">tap to change</span></button>`
+      : `<div class="feel-card" style="margin-top:10px">
+          <div class="feel-head"><span>How did that session feel?</span><span class="muted">1 bad · 10 great</span></div>
+          <div class="feel-scale">${[1,2,3,4,5,6,7,8,9,10].map((n) => `<button class="feel-btn ${sfTone(n)}${s.feel === n ? ' on' : ''}" data-sfeel="${n}" type="button">${n}</button>`).join('')}</div>
+        </div>`;
     today = `<div class="panel tcard done">
       <div class="tc-head"><span class="tc-day">Today ✓ ${esc(s.dayLabel)}</span></div>
       <div class="tc-stats"><span><b>${stats.sets}</b> sets</span><span><b>${stats.vol.toLocaleString()}</b> kg volume</span><span><b>${fmtDur(s.finishedAt - s.startedAt)}</b></span></div>
       <p class="muted sm">Logged &amp; saved. Great session — rest up.</p>
+      ${sfHTML}
     </div>`;
   } else {
     const label = dayId ? p.days[dayId].label : `${p.days[nxt.id].label} (next up)`;
@@ -470,7 +478,8 @@ function homeHTML(p, s) {
   const histHTML = hist.length
     ? `<div class="panel"><h2 class="ph2">Recent workouts</h2>${hist.map((h) => {
         const st = sessionStats(h);
-        return `<div class="hrow"><span class="hr-date">${esc(S.fmtDate(h.key))}</span><span class="hr-day">${esc(h.dayLabel.split('·')[0].trim())}</span><span class="hr-st">${st.sets} sets · ${st.vol.toLocaleString()} kg</span></div>`;
+        const fl = Number.isInteger(h.feel) ? ` · ${h.feel}/10` : '';
+        return `<div class="hrow"><span class="hr-date">${esc(S.fmtDate(h.key))}</span><span class="hr-day">${esc(h.dayLabel.split('·')[0].trim())}</span><span class="hr-st">${st.sets} sets · ${st.vol.toLocaleString()} kg${fl}</span></div>`;
       }).join('')}</div>`
     : '';
   return `<div class="page-head"><h1>Train</h1><p class="muted">${esc(p.name)} · <button class="link-btn inline" data-act="chgprog" type="button">Change program</button> · <button class="link-btn inline" data-act="progress" type="button">Progress</button></p></div>
@@ -711,6 +720,21 @@ function sessionHTML(p, s) {
 /* ── interactions ── */
 document.addEventListener('click', (e) => {
   const t = e.target;
+  if (t.closest('[data-sfeel-open]')) { ui.editSfeel = true; renderTrain(); return; }
+  const sfeel = t.closest('[data-sfeel]');
+  if (sfeel) {
+    const s = todaySession();
+    if (s) {
+      const n = +sfeel.dataset.sfeel;
+      s.feel = n;
+      S.putSession(K(), s);
+      ui.editSfeel = false;
+      vib(8);
+      toastT(`Session feel saved: ${n}/10`);
+      renderTrain();
+    }
+    return;
+  }
   const delProg = t.closest('[data-delprog]');
   if (delProg) {
     const id = delProg.dataset.delprog;

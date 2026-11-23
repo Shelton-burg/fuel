@@ -15,7 +15,7 @@ export const DEFAULT_PROFILE = { sex: 'male', age: 38, height: 180, weight: 85, 
 export const DEFAULT_GOALS = { kcal: 2550, protein: 180, carbs: 298, fat: 71, kcalLock: false }; // 180p + 298c + 71f = 2,550 (protein 4, carbs 4, fat 9)
 
 function fresh() {
-  return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, measures: {}, recipes: {}, water: {}, checkins: {}, settings: {}, meta: { created: Date.now() } };
+  return { profile: { ...DEFAULT_PROFILE }, goals: { ...DEFAULT_GOALS }, logs: {}, foods: {}, workouts: {}, weights: {}, measures: {}, recipes: {}, water: {}, checkins: {}, feel: {}, settings: {}, meta: { created: Date.now() } };
 }
 
 let state = load();
@@ -743,4 +743,25 @@ export function setSetting(k, v) {
   state.settings = state.settings || {};
   state.settings[k] = v;
   save();
+}
+
+export function dailyFeel(date = dayKey()) {
+  const v = (state.feel || {})[date];
+  return Number.isInteger(v) && v >= 1 && v <= 10 ? v : null;
+}
+export function setDailyFeel(score, date = dayKey()) {
+  const n = Math.max(1, Math.min(10, Math.round(Number(score) || 0)));
+  if (!n) return;
+  state.feel = state.feel || {};
+  state.feel[date] = n;
+  save();
+}
+export function recentDailyFeel(days = 14) {
+  const out = [];
+  const f = state.feel || {};
+  for (let i = 0; i < days; i++) {
+    const k = dayKey(new Date(Date.now() - i * 864e5));
+    if (Number.isInteger(f[k])) out.push({ key: k, score: f[k] });
+  }
+  return out;
 }
