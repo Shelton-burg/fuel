@@ -482,7 +482,18 @@ function homeHTML(p, s) {
         return `<div class="hrow"><span class="hr-date">${esc(S.fmtDate(h.key))}</span><span class="hr-day">${esc(h.dayLabel.split('·')[0].trim())}</span><span class="hr-st">${st.sets} sets · ${st.vol.toLocaleString()} kg${fl}</span></div>`;
       }).join('')}</div>`
     : '';
-  return `<div class="page-head"><h1>Train</h1><p class="muted">${esc(p.name)} · <button class="link-btn inline" data-act="chgprog" type="button">Change program</button> · <button class="link-btn inline" data-act="progress" type="button">Progress</button></p></div>
+  const progCount = Object.keys(p.days || {}).length;
+  const progKind = p.custom ? 'Custom program' : 'Active program';
+  const progBanner = `<button class="prog-banner" data-act="chgprog" type="button">
+    <div class="prog-banner-l">
+      <span class="prog-banner-eyebrow">${progKind}</span>
+      <span class="prog-banner-name">${esc(p.name)}</span>
+      <span class="prog-banner-sub">${progCount} days/wk · Tap to switch or build custom</span>
+    </div>
+    <span class="prog-banner-cta">Change <svg class="prog-banner-chev"><use href="#i-chev"/></svg></span>
+  </button>`;
+  return `<div class="page-head train-head"><h1>Train</h1><button class="prog-head-btn" data-act="progress" type="button">Progress <svg class="prog-banner-chev"><use href="#i-chev"/></svg></button></div>
+    ${progBanner}
     ${ui.justFinished ? '<div class="finish-banner">Workout saved — 💪</div>' : ''}
     ${today}${weekStripHTML(p)}${volumeHTML(p)}${favHTML}${histHTML}`;
 }

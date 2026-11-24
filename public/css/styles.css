@@ -1194,3 +1194,33 @@ button.stat-chip:active { transform:scale(.96); }
 .feel-chip.mid b { color:var(--amber); }
 .feel-chip.high b { color:var(--good); }
 .feel-chip .feel-edit { margin-left:auto; font-size:11.5px; font-weight:500; }
+
+/* ── Train screen: clear program switcher card ───────────── */
+.train-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.train-head h1 { margin:0; }
+.prog-head-btn {
+  display:inline-flex; align-items:center; gap:4px;
+  padding:7px 12px; border-radius:999px;
+  background:var(--panel); border:1px solid var(--line-2); color:var(--text-2);
+  font-size:12.5px; font-weight:600; white-space:nowrap; flex:0 0 auto;
+}
+.prog-head-btn:active { transform:scale(.96); border-color:var(--amber); color:var(--amber); }
+.prog-banner {
+  width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:13px 14px; margin:0 0 12px; border-radius:16px; text-align:left;
+  background:var(--panel); border:1px solid var(--line-2); color:var(--text);
+  box-shadow:0 1px 0 rgba(255,255,255,.03) inset;
+  transition:transform .12s ease, border-color .15s ease;
+}
+.prog-banner:active { transform:scale(.985); border-color:var(--amber); }
+.prog-banner-l { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1 1 auto; }
+.prog-banner-eyebrow { font-size:10.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--amber); }
+.prog-banner-name { font-size:16px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.prog-banner-sub { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.prog-banner-cta {
+  display:inline-flex; align-items:center; gap:4px; flex:0 0 auto;
+  padding:8px 13px; border-radius:12px;
+  background:var(--amber-soft); border:1px solid var(--amber); color:var(--amber);
+  font-size:13px; font-weight:700; white-space:nowrap;
+}
+.prog-banner-chev { width:13px; height:13px; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; flex:0 0 auto; }
