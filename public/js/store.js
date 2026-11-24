@@ -548,10 +548,62 @@ export function logCheckin(key, obj) {
   }
   const note = String((obj && obj.note) || '').trim().slice(0, 300);
   if (note) clean.note = note;
+  const sh = Number(obj && obj.sleepHours);
+  if (isFinite(sh) && sh > 0 && sh <= 16) clean.sleepHours = Math.round(sh * 2) / 2;
+  const sq = Math.round(Number(obj && obj.sleepQuality));
+  if (isFinite(sq) && sq >= 1 && sq <= 5) clean.sleepQuality = sq;
   if (!Object.keys(clean).length) return null;
   state.checkins[key] = { ...(state.checkins[key] || {}), ...clean, ts: Date.now() };
   save();
   return state.checkins[key];
+}
+
+/* ── fasting timer (v57) ──────────────────────────────────────────────────── */
+export const FAST_PRESETS = [
+  { id: '12h', label: '12h', sub: 'Overnight', hours: 12 },
+  { id: '16:8', label: '16:8', sub: 'Daily IF', hours: 16 },
+  { id: 'omad', label: 'OMAD', sub: '23h · 1 meal', hours: 23 },
+  { id: '24h', label: '24h', sub: 'Full day', hours: 24 },
+  { id: '48h', label: '48h', sub: '2-day fast', hours: 48 },
+  { id: '72h', label: '72h', sub: '3-day fast', hours: 72 },
+];
+export function getFasting() {
+  state.fasting = state.fasting || { active: null, history: [] };
+  if (!Array.isArray(state.fasting.history)) state.fasting.history = [];
+  return state.fasting;
+}
+export function startFast(presetId, targetHours, startedAt = Date.now()) {
+  const f = getFasting();
+  const hrs = Math.max(1, Math.min(168, Number(targetHours) || 16));
+  f.active = {
+    preset: String(presetId || `${hrs}h`),
+    targetHours: hrs,
+    startedAt: Number(startedAt) || Date.now(),
+  };
+  save();
+  return f.active;
+}
+export function endFast(endedAt = Date.now()) {
+  const f = getFasting();
+  if (!f.active) return null;
+  const end = Math.max(f.active.startedAt, Number(endedAt) || Date.now());
+  const actualHours = Math.round(((end - f.active.startedAt) / 36e5) * 10) / 10;
+  const rec = {
+    ...f.active,
+    endedAt: end,
+    actualHours,
+    completed: actualHours >= f.active.targetHours,
+  };
+  f.history.unshift(rec);
+  if (f.history.length > 60) f.history.length = 60;
+  f.active = null;
+  save();
+  return rec;
+}
+export function cancelFast() {
+  const f = getFasting();
+  f.active = null;
+  save();
 }
 export function getCheckin(key = dayKey()) { return (state.checkins || {})[key] || null; }
 export function checkinSeries(n = 14) {

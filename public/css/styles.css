@@ -411,6 +411,37 @@ svg.sm { width:14px; height:14px; }
 .qf-dot { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
 .qf-dot.sel { background: var(--amber); border-color: var(--amber); color: #1A1203; }
 
+/* ── sleep & fasting (v57) ───────────────────────────────── */
+.sleep-panel { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; }
+.sl-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sl-head b { font-size: 13.5px; color: var(--text); }
+.sl-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.sl-step { display: flex; align-items: center; gap: 6px; }
+.sl-btn { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--text); font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.sl-val { min-width: 54px; text-align: center; font-size: 15px; font-weight: 800; color: var(--text); }
+.sl-chips { display: flex; gap: 5px; }
+.sl-chip { padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.sl-chip.sel { background: var(--amber); border-color: var(--amber); color: #1A1203; }
+.sl-qual { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.fast-panel { display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; }
+.fp-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.fp-head b { font-size: 13.5px; color: var(--text); }
+.fp-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.fp-pre { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px; border-radius: 11px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--text); cursor: pointer; }
+.fp-pre b { font-size: 13px; }
+.fp-pre span { font-size: 10.5px; color: var(--muted); }
+.fp-pre.sel { border-color: var(--amber); background: rgba(245, 166, 35, 0.14); }
+.fp-active { display: flex; flex-direction: column; gap: 8px; }
+.fp-clock { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.fp-time { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; color: var(--amber); font-variant-numeric: tabular-nums; }
+.fp-stage { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--panel-2); color: var(--good); border: 1px solid var(--line); }
+.fp-bar { height: 8px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
+.fp-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--amber), var(--good)); transition: width .4s ease; }
+.fp-meta { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+.fp-actions { display: flex; gap: 8px; }
+.fp-actions .btn-primary { flex: 1; }
+
 /* ── plate scan (v56) ────────────────────────────────────── */
 .plate-frame { margin: 8px 0 4px; border-radius: 12px; overflow: hidden; }
 .plate-frame img { width: 100%; max-height: 220px; object-fit: cover; display: block; }

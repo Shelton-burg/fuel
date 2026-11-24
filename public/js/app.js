@@ -39,7 +39,10 @@ const FRUIT_NAMES = ['apple', 'banana', 'orange', 'mandarin', 'mango', 'strawber
   'pear', 'kiwi', 'passionfruit', 'lychee', 'papaya', 'pawpaw', 'lemon', 'lime', 'grapefruit', 'fig', 'date', 'prune',
   'raisin', 'sultana', 'cranberr', 'pomegranate', 'mangosteen', 'dragonfruit', 'durian', 'guava'];
 
-const APP_BUILD = 'v56';
+let fastSelPreset = '16:8';
+let fastTimer = null;
+
+const APP_BUILD = 'v57';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -328,6 +331,8 @@ function renderToday() {
   renderDailyFeel();
   renderFvTally();
   renderQuickFeel();
+  renderSleepPanel();
+  renderFastPanel();
   renderQuick();
   renderWeek();
 }
@@ -437,6 +442,160 @@ $('#quick-feel')?.addEventListener('click', (e) => {
   renderQuickFeel();
   renderCheckinCard();
   toast(`${cell.querySelector('.qf-label').textContent} ${n}/5 logged`);
+});
+
+/* ══════════ sleep tracking (v57) ══════════ */
+function renderSleepPanel() {
+  const el = $('#sleep-panel');
+  if (!el) return;
+  const c = S.getCheckin(selDate) || {};
+  const hrs = typeof c.sleepHours === 'number' ? c.sleepHours : null;
+  const qual = typeof c.sleepQuality === 'number' ? c.sleepQuality : null;
+  el.innerHTML = `
+    <div class="sl-head"><b>😴 ${isToday() ? "Last night's sleep" : 'Sleep'}</b><span class="muted sm">${hrs ? `${hrs} h logged` : 'tap to log · feeds Coach'}</span></div>
+    <div class="sl-row">
+      <div class="sl-step">
+        <button class="sl-btn" data-sl-delta="-0.5" type="button" aria-label="Minus 30 min">−</button>
+        <span class="sl-val">${hrs ? `${hrs}h` : '—'}</span>
+        <button class="sl-btn" data-sl-delta="0.5" type="button" aria-label="Plus 30 min">+</button>
+      </div>
+      <div class="sl-chips">
+        ${[6, 7, 7.5, 8, 9].map((v) => `<button class="sl-chip${hrs === v ? ' sel' : ''}" data-sl-set="${v}" type="button">${v}h</button>`).join('')}
+      </div>
+    </div>
+    <div class="sl-qual">
+      <span class="qf-label">Quality</span>
+      <div class="qf-dots">${[1, 2, 3, 4, 5].map((n) => `<button class="qf-dot${qual === n ? ' sel' : ''}" data-sl-qual="${n}" type="button" aria-label="Sleep quality ${n}">${n}</button>`).join('')}</div>
+    </div>`;
+}
+
+$('#sleep-panel')?.addEventListener('click', (e) => {
+  const c = S.getCheckin(selDate) || {};
+  const setB = e.target.closest('[data-sl-set]');
+  if (setB) {
+    const v = Number(setB.dataset.slSet);
+    S.logCheckin(selDate, { ...c, sleepHours: v });
+    vib(6);
+    renderSleepPanel();
+    toast(`Sleep ${v}h logged`);
+    return;
+  }
+  const dB = e.target.closest('[data-sl-delta]');
+  if (dB) {
+    const cur = typeof c.sleepHours === 'number' ? c.sleepHours : 7;
+    const next = Math.max(0.5, Math.min(16, Math.round((cur + Number(dB.dataset.slDelta)) * 2) / 2));
+    S.logCheckin(selDate, { ...c, sleepHours: next });
+    vib(6);
+    renderSleepPanel();
+    toast(`Sleep ${next}h logged`);
+    return;
+  }
+  const qB = e.target.closest('[data-sl-qual]');
+  if (qB) {
+    const n = Number(qB.dataset.slQual);
+    S.logCheckin(selDate, { ...c, sleepQuality: n });
+    vib(6);
+    renderSleepPanel();
+    toast(`Sleep quality ${n}/5 logged`);
+  }
+});
+
+/* ══════════ fasting timer (v57) ══════════ */
+function fastStage(elapsedH) {
+  if (elapsedH < 4) return 'Digesting';
+  if (elapsedH < 12) return 'Blood sugar steady';
+  if (elapsedH < 18) return 'Fat-burning';
+  if (elapsedH < 24) return 'Ketosis';
+  if (elapsedH < 48) return 'Autophagy';
+  return 'Deep fast';
+}
+
+function fmtFastClock(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+function renderFastPanel() {
+  const el = $('#fast-panel');
+  if (!el) return;
+  if (fastTimer) { clearInterval(fastTimer); fastTimer = null; }
+  const f = S.getFasting();
+  const doneCount = (f.history || []).filter((h) => h.completed).length;
+
+  if (!f.active) {
+    const sel = S.FAST_PRESETS.find((p) => p.id === fastSelPreset) || S.FAST_PRESETS[1];
+    el.innerHTML = `
+      <div class="fp-head"><b>⏱️ Fasting</b><span class="muted sm">${doneCount ? `${doneCount} completed` : 'Pick a fast to start'}</span></div>
+      <div class="fp-presets">
+        ${S.FAST_PRESETS.map((p) => `<button class="fp-pre${p.id === sel.id ? ' sel' : ''}" data-fp-pre="${p.id}" type="button"><b>${p.label}</b><span>${p.sub}</span></button>`).join('')}
+      </div>
+      <button class="btn-primary wide" data-fp-start type="button">Start ${sel.label} fast (${sel.hours}h)</button>`;
+    return;
+  }
+
+  const drawActive = () => {
+    const a = S.getFasting().active;
+    if (!a) { renderFastPanel(); return; }
+    const elapsedMs = Math.max(0, Date.now() - a.startedAt);
+    const targetMs = a.targetHours * 36e5;
+    const elapsedH = elapsedMs / 36e5;
+    const pct = Math.min(100, Math.round((elapsedMs / targetMs) * 100));
+    const remMs = Math.max(0, targetMs - elapsedMs);
+    const hit = elapsedMs >= targetMs;
+    const endDt = new Date(a.startedAt + targetMs);
+    const endStr = endDt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    el.innerHTML = `
+      <div class="fp-head"><b>⏱️ Fasting · ${esc(a.preset)}</b><span class="muted sm">${hit ? 'Goal reached! 🎉' : `Goal ${endStr}`}</span></div>
+      <div class="fp-active">
+        <div class="fp-clock">
+          <span class="fp-time">${fmtFastClock(elapsedMs)}</span>
+          <span class="fp-stage">${fastStage(elapsedH)}</span>
+        </div>
+        <div class="fp-bar"><i style="width:${pct}%"></i></div>
+        <div class="fp-meta">
+          <span>${pct}% of ${a.targetHours}h</span>
+          <span>${hit ? `+${fmtFastClock(elapsedMs - targetMs)} over` : `${fmtFastClock(remMs)} left`}</span>
+        </div>
+        <div class="fp-actions">
+          <button class="btn-primary sm" data-fp-end type="button">End &amp; save fast</button>
+          <button class="btn ghost sm" data-fp-cancel type="button">Cancel</button>
+        </div>
+      </div>`;
+  };
+  drawActive();
+  fastTimer = setInterval(drawActive, 1000);
+}
+
+$('#fast-panel')?.addEventListener('click', (e) => {
+  const pre = e.target.closest('[data-fp-pre]');
+  if (pre) {
+    fastSelPreset = pre.dataset.fpPre;
+    renderFastPanel();
+    return;
+  }
+  if (e.target.closest('[data-fp-start]')) {
+    const sel = S.FAST_PRESETS.find((p) => p.id === fastSelPreset) || S.FAST_PRESETS[1];
+    S.startFast(sel.id, sel.hours);
+    vib(8);
+    renderFastPanel();
+    toast(`${sel.label} fast started`);
+    return;
+  }
+  if (e.target.closest('[data-fp-end]')) {
+    const rec = S.endFast();
+    vib([20, 40, 20]);
+    renderFastPanel();
+    if (rec) toast(`Fast saved: ${rec.actualHours}h (${rec.preset})`);
+    return;
+  }
+  if (e.target.closest('[data-fp-cancel]')) {
+    S.cancelFast();
+    renderFastPanel();
+    toast('Fast cancelled');
+  }
 });
 
 /* ══════════ recipes from ingredients (v55) ══════════ */
