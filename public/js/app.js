@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v52';
+const APP_BUILD = 'v53';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -1293,12 +1293,13 @@ function build7DayGapsPayload() {
   const map = new Map();
   let daysLogged = 0;
   for (const d of days) {
-    const entries = (st.days && st.days[d.key]) || [];
+    const day = (st.logs && st.logs[d.key]) || null;
+    const meals = day && day.meals ? day.meals : {};
+    const entries = Object.values(meals).flat().filter((e) => e && typeof e.name === 'string' && e.name.trim());
     if (!entries.length) continue;
     daysLogged++;
     for (const e of entries) {
-      const name = String(e.name || '').trim();
-      if (!name) continue;
+      const name = String(e.name).trim();
       const key = name.toLowerCase();
       const prev = map.get(key) || { name, count: 0, kcal: 0, p: 0, c: 0, f: 0 };
       prev.count += 1;
