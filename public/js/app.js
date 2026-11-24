@@ -39,7 +39,7 @@ const FRUIT_NAMES = ['apple', 'banana', 'orange', 'mandarin', 'mango', 'strawber
   'pear', 'kiwi', 'passionfruit', 'lychee', 'papaya', 'pawpaw', 'lemon', 'lime', 'grapefruit', 'fig', 'date', 'prune',
   'raisin', 'sultana', 'cranberr', 'pomegranate', 'mangosteen', 'dragonfruit', 'durian', 'guava'];
 
-const APP_BUILD = 'v55';
+const APP_BUILD = 'v56';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -308,8 +308,8 @@ function renderToday() {
     const rows = items
       .map(
         (e) => `<div class="mi" data-meal="${m}" data-id="${e.id}">
-        <div class="mi-main"><div class="mi-name">${esc(e.name)}</div><div class="mi-sub">${esc(e.qtyLabel || '')}${e.brand ? ' · ' + esc(e.brand) : ''}</div></div>
-        <div class="mi-kcal">${fmt(e.kcal)}</div>
+        <div class="mi-main"><div class="mi-name">${esc(e.name)}${e.est ? ' <span class="est-tag" title="Estimated from a photo — approximate only">≈</span>' : ''}</div><div class="mi-sub">${esc(e.qtyLabel || '')}${e.brand ? ' · ' + esc(e.brand) : ''}</div></div>
+        <div class="mi-kcal">${e.est ? '≈' : ''}${fmt(e.kcal)}</div>
         <button class="mi-del" data-del type="button" aria-label="Remove"><svg><use href="#i-trash"/></svg></button>
       </div>`
       )
@@ -785,6 +785,7 @@ $('#recents-list').addEventListener('click', (e) => {
 
 $('#btn-scan').addEventListener('click', () => { closeSheet(); scanBarcode(); });
 $('#btn-photo').addEventListener('click', () => { closeSheet(); captureLabel(); });
+$('#btn-plate').addEventListener('click', () => { closeSheet(); capturePlate(); });
 $('#btn-search-food').addEventListener('click', () => { closeSheet(); searchModal(); });
 $('#btn-manual').addEventListener('click', () => { closeSheet(); manualModal(); });
 
@@ -1165,6 +1166,111 @@ function captureLabel() {
     labelReviewModal(dataUrl);
   });
   inp.click();
+}
+
+function capturePlate() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.capture = 'environment';
+  inp.addEventListener('change', async () => {
+    const file = inp.files?.[0];
+    if (!file) return;
+    const dataUrl = await downscale(file, 1400, 0.84);
+    plateReviewModal(dataUrl);
+  });
+  inp.click();
+}
+
+function plateReviewModal(dataUrl) {
+  const { wrap, close } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">Scanning your plate…</div>
+    </div>
+    <div class="photo-frame"><img src="${dataUrl}" alt=""><div class="photo-scanline"></div></div>
+    <div class="ai-status"><div class="spinner"></div><span>Estimating what's on the plate…</span></div>
+  `);
+
+  fetch('/api/plate-scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: dataUrl }),
+  })
+    .then((r) => r.json().then((j) => ({ ok: r.ok, j })))
+    .then(({ ok, j }) => {
+      if (!ok || !j.result) throw new Error(j.message || 'plate_scan_failed');
+      const res = j.result;
+      if (!res.found || !res.items.length) throw new Error('no_food');
+      plateConfirmModal(dataUrl, res);
+      close();
+    })
+    .catch((e) => {
+      if (/ai_key_rejected|ai_quota|monthly AI allowance|offline/i.test(e.message || '')) {
+        wrap.querySelector('.ai-status').outerHTML = `<div class="empty-state"><b>Plate scanning is paused right now.</b><br>The photo service has hit its monthly free allowance — nothing is wrong with your photo. Search the food or add it by hand instead; both work instantly.</div>`;
+        wrap.querySelector('.modal-title').textContent = "Can't scan plates right now";
+        const byHand = document.createElement('button');
+        byHand.className = 'btn primary';
+        byHand.textContent = 'Add the foods by hand';
+        byHand.addEventListener('click', () => { close(); manualModal(); });
+        wrap.querySelector('.modal').appendChild(byHand);
+        return;
+      }
+      const msg = e.message === 'no_food'
+        ? `Couldn't spot any food in that photo. Get the plate in frame, top-down, in good light.`
+        : `Couldn't read the plate (${esc(e.message)}). Try again with a clearer, top-down photo.`;
+      wrap.querySelector('.ai-status').outerHTML = `<div class="empty-state">${msg}</div>`;
+      wrap.querySelector('.modal-title').textContent = "Couldn't read it";
+    });
+}
+
+function plateConfirmModal(dataUrl, res) {
+  const items = res.items;
+  const { wrap } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">What I can see (rough)</div>
+    </div>
+    <div class="plate-frame"><img src="${dataUrl}" alt=""></div>
+    <p class="plate-est-note">These are <b>visual estimates</b> — treat them as a guide, not gospel. Adjust portions in your log if needed.</p>
+    ${res.overall_note ? `<p class="muted sm plate-note">${esc(res.overall_note)}</p>` : ''}
+    <div class="plate-items">${items.map((it, i) => `
+      <div class="plate-item" data-pitem="${i}">
+        <div class="pi-main">
+          <div class="pi-name">${esc(it.name)}${it.portion ? ` <span class="muted sm">(${esc(it.portion)})</span>` : ''}</div>
+          ${it.note ? `<div class="pi-note">${esc(it.note)}</div>` : ''}
+          <div class="pi-macros muted sm">≈ ${it.kcal} kcal · P ${it.p}g · C ${it.c}g · F ${it.f}g</div>
+        </div>
+        <button class="btn ghost sm" data-padd="${i}" type="button">Add</button>
+      </div>`).join('')}
+    </div>
+    <div class="plate-foot">
+      <select id="plate-meal">${S.MEALS.map((m) => `<option value="${m}"${m === 'dinner' ? ' selected' : ''}>${m[0].toUpperCase() + m.slice(1)}</option>`).join('')}</select>
+      <button class="btn-primary" id="plate-addall" type="button">Add all (${items.reduce((a, it) => a + it.kcal, 0)} kcal)</button>
+    </div>
+  `);
+  const meal = () => wrap.querySelector('#plate-meal')?.value || 'dinner';
+  const addOne = (i) => {
+    const it = items[i];
+    if (!it) return;
+    S.addEntry(meal(), { name: it.name, kcal: it.kcal, p: it.p, c: it.c, f: it.f, est: true });
+    const b = wrap.querySelector(`[data-padd="${i}"]`);
+    if (b) { b.textContent = '✓'; b.disabled = true; }
+    vib(6);
+    toast(`${it.name} logged (estimate)`);
+    if (isToday()) renderToday();
+  };
+  wrap.addEventListener('click', (e) => {
+    const one = e.target.closest('[data-padd]');
+    if (one) { addOne(Number(one.dataset.padd)); return; }
+    if (e.target.closest('#plate-addall')) {
+      items.forEach((_, i) => addOne(i));
+      toast('Plate logged as estimates');
+      wrap.remove();
+      return;
+    }
+    if (e.target.closest('[data-close]')) wrap.remove();
+  });
 }
 
 function downscale(file, maxSide, quality) {

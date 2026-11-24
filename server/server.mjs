@@ -3,7 +3,7 @@ import express from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { parseLabel } from './label.mjs';
+import { parseLabel, plateScan } from './label.mjs';
 import { coachAdvice, coachChat, weeklyReview, nutritionGaps, recipeIdeas } from './coach.mjs';
 import { mealPlan } from './mealplan.mjs';
 import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured } from './sync.mjs';
@@ -109,6 +109,36 @@ app.post('/api/parse-label', AUTH.requireUser, AUTH.aiBudget('label', 80), async
       });
     }
     res.status(502).json({ error: 'label_parse_failed', message: 'Could not read the label. Try again with a clearer, flatter photo.' });
+  }
+});
+
+app.post('/api/plate-scan', AUTH.requireUser, AUTH.aiBudget('plate', 40), async (req, res) => {
+  try {
+    if (!GEMINI_KEY) return res.status(503).json({ error: 'ai_not_configured', message: 'AI plate scanner not configured yet.' });
+    const { image } = req.body || {};
+    if (typeof image !== 'string') return res.status(400).json({ error: 'no_image' });
+    const m = image.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
+    if (!m) return res.status(400).json({ error: 'bad_image' });
+    const mimeType = m[1];
+    const base64 = m[2];
+    if (base64.length > 8_000_000) return res.status(413).json({ error: 'too_large' });
+    const result = await plateScan(base64, mimeType, GEMINI_KEY);
+    res.json({ ok: true, result });
+  } catch (e) {
+    console.error('[plate-scan]', e.detail || e.message);
+    if (e.message === 'ai_key_rejected') {
+      return res.status(503).json({
+        error: 'ai_key_rejected',
+        message: "Plate scanning is offline right now — add the foods by hand or search instead, both still work.",
+      });
+    }
+    if (e.message === 'ai_quota') {
+      return res.status(503).json({
+        error: 'ai_quota',
+        message: "Plate scanning has hit its monthly AI allowance. Raise the cap at ai.studio/spend and it'll start working again — nothing is wrong with your photo.",
+      });
+    }
+    res.status(502).json({ error: 'plate_scan_failed', message: 'Could not read the plate. Try again with a clearer, brighter photo.' });
   }
 });
 

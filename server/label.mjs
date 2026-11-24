@@ -109,3 +109,95 @@ export async function parseLabel(base64, mimeType, apiKey) {
   err.detail = lastErr;
   throw err;
 }
+
+/* ── plate scan (v56): ESTIMATES calories from a photo of a plate of food.
+   Estimates only — never presented as precise. ─────────────────────────── */
+const PLATE_PROMPT = `You are looking at a photo of a plate (or bowl) of food. Estimate what is on it and roughly how many calories and macros it contains.
+You are NOT reading a printed label — every number you give is an honest visual estimate. Never imply precision.
+Rules:
+- List 1 to 8 distinct food items that are clearly visible (e.g. "Grilled chicken breast", "White rice", "Mixed salad").
+- portion: short plain description with your best size guess (e.g. "about 150g", "small handful", "one scoop").
+- kcal: your best whole-number estimate for THAT item's portion.
+- p, c, f: grams, one decimal max. Use 0 when negligible.
+- If a dish is mixed/invisible (sauces, oil, hidden ingredients), say so in the note for that item or overall — do NOT invent precision.
+- Skip garnish or condiments too small to matter unless they clearly add calories (dressings, sauces).
+- Be conservative: when unsure, give a middle-range estimate and mention the range in note (e.g. "could be 200-350 kcal").
+Return JSON ONLY:
+- found: true if any food is clearly visible in the photo, false otherwise
+- overall_note: one short honest line about confidence (e.g. "sauces hidden under chicken — estimates vary"), else null
+- items: [{ name, portion, kcal, p, c, f, note }]`;
+
+const PLATE_SCHEMA = {
+  type: 'object',
+  properties: {
+    found: { type: 'boolean' },
+    overall_note: { type: 'string', nullable: true },
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          portion: { type: 'string', nullable: true },
+          kcal: { type: 'number' },
+          p: { type: 'number' },
+          c: { type: 'number' },
+          f: { type: 'number' },
+          note: { type: 'string', nullable: true },
+        },
+        required: ['name', 'kcal', 'p', 'c', 'f'],
+      },
+    },
+  },
+  required: ['found'],
+};
+
+export async function plateScan(base64, mimeType, apiKey) {
+  const body = {
+    contents: [{ parts: [{ text: PLATE_PROMPT }, { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64 } }] }],
+    generationConfig: {
+      temperature: 0.2,
+      responseMimeType: 'application/json',
+      responseSchema: PLATE_SCHEMA,
+      maxOutputTokens: 1200,
+    },
+  };
+  let lastErr = '';
+  for (const model of MODEL_CANDIDATES) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      const t = (await r.text()).replace(/\s+/g, ' ').slice(0, 200);
+      lastErr += `[${model}] ${r.status} ${t} | `;
+      if (r.status === 401 || r.status === 403) { const e = new Error('ai_key_rejected'); e.detail = lastErr; throw e; }
+      if (r.status === 429 && /spending cap|quota|resource_exhausted|billing/i.test(t)) {
+        const e = new Error('ai_quota'); e.detail = lastErr; throw e;
+      }
+      continue;
+    }
+    const j = await r.json();
+    const text = j?.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || '';
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { lastErr = 'bad_json'; continue; }
+    const items = (Array.isArray(parsed.items) ? parsed.items : []).slice(0, 8).map((it) => ({
+      name: String(it?.name || '').slice(0, 60),
+      portion: it?.portion ? String(it.portion).slice(0, 60) : '',
+      kcal: Math.max(0, Math.round(Number(it?.kcal) || 0)),
+      p: Math.max(0, Math.round((Number(it?.p) || 0) * 10) / 10),
+      c: Math.max(0, Math.round((Number(it?.c) || 0) * 10) / 10),
+      f: Math.max(0, Math.round((Number(it?.f) || 0) * 10) / 10),
+      note: it?.note ? String(it.note).slice(0, 120) : '',
+    })).filter((it) => it.name && (it.kcal > 0 || it.p > 0 || it.c > 0 || it.f > 0));
+    return {
+      found: !!parsed.found,
+      overall_note: parsed.overall_note ? String(parsed.overall_note).slice(0, 200) : null,
+      items,
+    };
+  }
+  const err = new Error('plate_scan_failed');
+  err.detail = lastErr;
+  throw err;
+}

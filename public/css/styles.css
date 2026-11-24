@@ -411,6 +411,21 @@ svg.sm { width:14px; height:14px; }
 .qf-dot { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
 .qf-dot.sel { background: var(--amber); border-color: var(--amber); color: #1A1203; }
 
+/* ── plate scan (v56) ────────────────────────────────────── */
+.plate-frame { margin: 8px 0 4px; border-radius: 12px; overflow: hidden; }
+.plate-frame img { width: 100%; max-height: 220px; object-fit: cover; display: block; }
+.plate-est-note { font-size: 12.5px; color: var(--text-2); margin: 4px 0 6px; line-height: 1.45; }
+.plate-note { margin: 0 0 6px; }
+.plate-items { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow-y: auto; }
+.plate-item { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--panel-2); }
+.pi-main { flex: 1; }
+.pi-name { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.pi-note { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.pi-macros { margin-top: 3px; }
+.plate-foot { display: flex; gap: 8px; margin-top: 10px; }
+.plate-foot select { flex: 1; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); font-size: 13px; font-weight: 600; }
+.est-tag { display: inline-block; margin-left: 3px; color: var(--amber); font-weight: 700; }
+
 /* ── recipes (v55) ──────────────────────────────────────── */
 .recipe-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
 .rc-ico { font-size: 22px; }
