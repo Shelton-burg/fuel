@@ -488,7 +488,7 @@ function homeHTML(p, s) {
     <div class="prog-banner-l">
       <span class="prog-banner-eyebrow">${progKind}</span>
       <span class="prog-banner-name">${esc(p.name)}</span>
-      <span class="prog-banner-sub">${progCount} days/wk · Tap to switch or build custom</span>
+      <span class="prog-banner-sub">${progCount} days/wk · Switch or create custom</span>
     </div>
     <span class="prog-banner-cta">Change <svg class="prog-banner-chev"><use href="#i-chev"/></svg></span>
   </button>`;
