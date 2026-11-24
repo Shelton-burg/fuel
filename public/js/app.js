@@ -39,7 +39,7 @@ const FRUIT_NAMES = ['apple', 'banana', 'orange', 'mandarin', 'mango', 'strawber
   'pear', 'kiwi', 'passionfruit', 'lychee', 'papaya', 'pawpaw', 'lemon', 'lime', 'grapefruit', 'fig', 'date', 'prune',
   'raisin', 'sultana', 'cranberr', 'pomegranate', 'mangosteen', 'dragonfruit', 'durian', 'guava'];
 
-const APP_BUILD = 'v54';
+const APP_BUILD = 'v55';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -438,6 +438,137 @@ $('#quick-feel')?.addEventListener('click', (e) => {
   renderCheckinCard();
   toast(`${cell.querySelector('.qf-label').textContent} ${n}/5 logged`);
 });
+
+/* ══════════ recipes from ingredients (v55) ══════════ */
+let recipePicks = [];
+let recipeResults = [];
+
+function recentFoodChips() {
+  const map = new Map();
+  for (const d of S.recentDays(7)) {
+    const day = (S.getState().logs || {})[d.key];
+    for (const rows of Object.values((day && day.meals) || {})) {
+      for (const e of rows || []) {
+        const name = String((e && e.name) || '').trim();
+        if (name) map.set(name, (map.get(name) || 0) + 1);
+      }
+    }
+  }
+  return Array.from(map.entries()).sort((a, b) => b[1] - a[1]).slice(0, 16).map(([n]) => n);
+}
+
+function recipeModal() {
+  recipePicks = [];
+  recipeResults = [];
+  const chips = recentFoodChips();
+  const { wrap } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-rc-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">Cook with what you've got</div>
+    </div>
+    <p class="muted sm" style="margin:2px 0 8px">Tap your ingredients — I'll suggest 2-3 quick recipes that fit your goals and the season.</p>
+    <div class="rc-chips" id="rc-chips"></div>
+    <form id="rc-add" style="display:flex;gap:6px;margin:10px 0 6px">
+      <input id="rc-input" placeholder="Add another ingredient…" maxlength="40" autocomplete="off" style="flex:1">
+      <button class="btn-primary sm" type="submit">+ Add</button>
+    </form>
+    <button class="btn-primary wide" id="rc-go" type="button">Suggest recipes</button>
+    <div id="rc-out"></div>
+  `);
+
+  const renderChips = () => {
+    const el = wrap.querySelector('#rc-chips');
+    el.innerHTML = chips.map((c) => `<button class="rc-chip${recipePicks.includes(c) ? ' sel' : ''}" data-rc-chip="${esc(c)}" type="button">${esc(c)}</button>`).join('')
+      + recipePicks.filter((p) => !chips.includes(p)).map((c) => `<button class="rc-chip sel" data-rc-chip="${esc(c)}" type="button">${esc(c)}</button>`).join('');
+    if (!el.innerHTML) el.innerHTML = '<span class="muted sm">Nothing logged in the last 7 days — type ingredients below.</span>';
+  };
+  renderChips();
+
+  wrap.querySelector('#rc-chips').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-rc-chip]');
+    if (!b) return;
+    const name = b.dataset.rcChip;
+    recipePicks = recipePicks.includes(name) ? recipePicks.filter((p) => p !== name) : [...recipePicks, name];
+    renderChips();
+  });
+
+  wrap.querySelector('#rc-add').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const inp = wrap.querySelector('#rc-input');
+    const v = inp.value.trim();
+    if (!v) return;
+    if (recipePicks.length >= 10) { toast('10 ingredients max'); return; }
+    if (!recipePicks.includes(v)) recipePicks.push(v);
+    inp.value = '';
+    renderChips();
+  });
+
+  wrap.querySelector('#rc-go').addEventListener('click', async () => {
+    const go = wrap.querySelector('#rc-go');
+    const out = wrap.querySelector('#rc-out');
+    if (!recipePicks.length) { toast('Pick at least one ingredient first'); return; }
+    go.disabled = true;
+    go.textContent = 'Cooking…';
+    out.innerHTML = '<div class="rc-loading">Whipping up ideas…</div>';
+    const st = S.getState();
+    const { month, items: inSeason } = seasonalList();
+    const payload = {
+      ingredients: recipePicks,
+      kcal: st.goals.kcal,
+      protein: st.goals.protein,
+      region: seasonalZone(),
+      season: { month, inSeason },
+    };
+    try {
+      const r = await fetch('/api/recipes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok || !j.result) throw new Error(j.message || 'Recipe engine failed');
+      recipeResults = j.result.recipes || [];
+      if (!recipeResults.length) throw new Error('No recipes came back — try different ingredients');
+      out.innerHTML = recipeResults.map((rec, i) => `
+        <div class="rc-recipe">
+          <div class="rc-r-head"><b>${esc(rec.title)}</b><span class="muted sm">serves ${rec.serves} · ${rec.kcal} kcal</span></div>
+          <div class="rc-macros">P ${rec.p}g · C ${rec.c}g · F ${rec.f}g</div>
+          <div class="rc-ing">${rec.ingredients.map(esc).join(' · ')}</div>
+          <p class="rc-method">${esc(rec.method)}</p>
+          <div class="rc-log-row">
+            <select class="rc-meal" data-rc-meal="${i}">${S.MEALS.map((m) => `<option value="${m}"${m === 'dinner' ? ' selected' : ''}>${m[0].toUpperCase() + m.slice(1)}</option>`).join('')}</select>
+            <button class="btn-primary sm" data-rc-log="${i}" type="button">Log it</button>
+          </div>
+        </div>`).join('');
+    } catch (err) {
+      out.innerHTML = `<p class="rc-err">${esc(err.message || 'Could not dream up recipes right now')}</p>`;
+    } finally {
+      go.disabled = false;
+      go.textContent = 'Suggest recipes';
+    }
+  });
+
+  wrap.querySelector('#rc-out').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-rc-log]');
+    if (!b) return;
+    const i = Number(b.dataset.rcLog);
+    const rec = recipeResults[i];
+    if (!rec) return;
+    const meal = wrap.querySelector(`[data-rc-meal="${i}"]`)?.value || 'dinner';
+    S.addEntry(meal, { name: rec.title, kcal: rec.kcal, p: rec.p, c: rec.c, f: rec.f });
+    b.textContent = 'Logged ✓';
+    b.disabled = true;
+    vib(8);
+    toast(`${rec.title} logged to ${meal}`);
+    if (isToday()) renderToday();
+  });
+
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-rc-close]')) wrap.remove();
+  });
+}
+
+$('#recipe-card')?.addEventListener('click', recipeModal);
 
 $('#meals').addEventListener('click', (e) => {
   const del = e.target.closest('[data-del]');

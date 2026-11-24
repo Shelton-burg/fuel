@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseLabel } from './label.mjs';
-import { coachAdvice, coachChat, weeklyReview, nutritionGaps } from './coach.mjs';
+import { coachAdvice, coachChat, weeklyReview, nutritionGaps, recipeIdeas } from './coach.mjs';
 import { mealPlan } from './mealplan.mjs';
 import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured } from './sync.mjs';
 import { sendTelegram, telegramConfigured } from './notify.mjs';
@@ -154,6 +154,20 @@ app.post('/api/nutrition-gaps', AUTH.requireUser, AUTH.aiBudget('gaps', 30), asy
   } catch (e) {
     console.error('[nutrition-gaps]', e.detail || e.message);
     res.status(502).json({ error: 'gaps_failed', message: 'Could not analyse your last 7 days right now — try again.' });
+  }
+});
+
+app.post('/api/recipes', AUTH.requireUser, AUTH.aiBudget('recipes', 30), async (req, res) => {
+  try {
+    if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
+    const payload = req.body && req.body.payload;
+    if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'no_payload' });
+    if (JSON.stringify(payload).length > 8000) return res.status(413).json({ error: 'too_large' });
+    const result = await recipeIdeas(payload, KEYS);
+    res.json({ ok: true, result });
+  } catch (e) {
+    console.error('[recipes]', e.detail || e.message);
+    res.status(502).json({ error: 'recipes_failed', message: 'Could not dream up recipes right now — try again.' });
   }
 });
 

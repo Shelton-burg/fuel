@@ -409,3 +409,59 @@ ${fvLine}
   })).filter((x) => x.food);
   return { headline, gaps, next3Days, generatedAt: new Date().toISOString() };
 }
+
+/* ── ingredient-based recipe ideas (v55) ─────────────────────────────────── */
+const RECIPE_SCHEMA = {
+  type: 'object',
+  properties: {
+    recipes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          serves: { type: 'number' },
+          ingredients: { type: 'array', items: { type: 'string' } },
+          method: { type: 'string' },
+          kcal: { type: 'number' },
+          p: { type: 'number' },
+          c: { type: 'number' },
+          f: { type: 'number' },
+        },
+        required: ['title', 'ingredients', 'method', 'kcal', 'p', 'c', 'f'],
+      },
+    },
+  },
+  required: ['recipes'],
+};
+
+export async function recipeIdeas(payload, keys) {
+  const ingredients = (Array.isArray(payload?.ingredients) ? payload.ingredients : [])
+    .map((s) => clamp(String(s), 40)).filter(Boolean).slice(0, 10);
+  const region = typeof payload?.region === 'string' ? payload.region : 'qld';
+  const month = typeof payload?.season?.month === 'string' ? payload.season.month : '';
+  const inSeason = Array.isArray(payload?.season?.inSeason) ? payload.season.inSeason.slice(0, 24) : [];
+  const kcal = Math.max(0, Math.round(Number(payload?.kcal) || 0));
+  const protein = Math.max(0, Math.round(Number(payload?.protein) || 0));
+  const system = `You are FUEL's practical Aussie home cook. Invent 2 to 3 realistic recipes that use the ingredients the user has. They can assume ordinary pantry staples are available (oil, salt, pepper, dried herbs, rice, pasta, stock, garlic, onion, eggs).
+Rules:
+- Australian English; simple, fast, home-kitchen recipes; no exotic or hard-to-find ingredients.
+- Each recipe MUST use at least 2 of the user's ingredients.
+- Prefer in-season produce when adding veg: it is ${month || 'this month'} in ${region.toUpperCase()} Australia; in season now: ${inSeason.join(', ') || '(unknown)'}.
+- Portion realistically: ${kcal ? `aim for roughly ${kcal} kcal per serve` : 'a sensible single-serve portion'}${protein ? ` and macros that help hit a ${protein}g protein day` : ''}.
+- "method": one short paragraph, numbered steps, <= 500 chars.
+- Return JSON ONLY: {"recipes": [{"title": string, "serves": number, "ingredients": [string], "method": string, "kcal": number (per serve), "p": number (g), "c": number (g), "f": number (g)}]} with 2 to 3 recipes.`;
+  const user = `Ingredients I have: ${ingredients.join(', ') || '(none given — suggest 3 easy seasonal dinners)'}\n\nReturn JSON only.`;
+  const raw = await askModel(system, user, keys, RECIPE_SCHEMA, 1600);
+  const recipes = (Array.isArray(raw?.recipes) ? raw.recipes : []).slice(0, 3).map((r) => ({
+    title: clamp(r?.title || 'Quick meal', 70),
+    serves: Math.max(1, Math.round(Number(r?.serves) || 1)),
+    ingredients: (Array.isArray(r?.ingredients) ? r.ingredients : []).map((s) => clamp(String(s), 60)).filter(Boolean).slice(0, 14),
+    method: clamp(r?.method || '', 700),
+    kcal: Math.max(0, Math.round(Number(r?.kcal) || 0)),
+    p: Math.max(0, Math.round((Number(r?.p) || 0) * 10) / 10),
+    c: Math.max(0, Math.round((Number(r?.c) || 0) * 10) / 10),
+    f: Math.max(0, Math.round((Number(r?.f) || 0) * 10) / 10),
+  })).filter((r) => r.title && r.ingredients.length);
+  return { recipes, generatedAt: new Date().toISOString() };
+}
