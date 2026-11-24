@@ -377,10 +377,14 @@ const GAPS_SCHEMA = {
 };
 
 export async function nutritionGaps(payload, keys) {
+  const region = typeof payload?.region === 'string' ? payload.region : 'qld';
+  const month = typeof payload?.season?.month === 'string' ? payload.season.month : '';
+  const inSeason = Array.isArray(payload?.season?.inSeason) ? payload.season.inSeason.slice(0, 24) : [];
   const system = `You are FUEL's practical Australian nutritionist. Look at the user's last 7 days of logged foods and spot likely vitamin, mineral, omega-3, or fibre gaps from their actual food patterns (e.g. heavy on chicken & white rice -> low iron/B12, omega-3, folate/fibre; low dairy/greens -> low calcium/potassium/magnesium).
 Rules:
 - Australian English, plain and direct, no lecturing, no fake exact mg numbers.
 - Fit their calorie & protein goals.
+- It is ${month || 'this month'} in ${region.toUpperCase()} Australia. Prefer in-season produce when choosing the next3Days foods — the in-season list right now includes: ${inSeason.join(', ') || '(unknown)'}. Only pick something out of season when it specifically fixes a gap.
 - Return JSON ONLY: {"headline": string (<= 110 chars), "gaps": [{"nutrient": string, "why": string (<= 90 chars), "swap": string (<= 90 chars)}] (2 to 4 items), "next3Days": [{"food": string (e.g. "Lean beef mince (150g)"), "reason": string (<= 60 chars), "kcal": number, "p": number, "c": number, "f": number}] (4 to 6 everyday Australian supermarket foods)}.`;
   const user = `Last 7 days food log summary:\n${JSON.stringify(payload)}\n\nReturn JSON only.`;
   const raw = await askModel(system, user, keys, GAPS_SCHEMA, 1400);

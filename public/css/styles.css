@@ -364,20 +364,29 @@ svg.sm { width:14px; height:14px; }
 .gaps-panel { display: flex; flex-direction: column; gap: 10px; }
 .gaps-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .gaps-body { display: flex; flex-direction: column; gap: 10px; }
-.gaps-headline { font-size: 13.5px; line-height: 1.4; font-weight: 600; color: var(--fg); }
+.gaps-headline { font-size: 13.5px; line-height: 1.4; font-weight: 600; color: var(--text); }
 .gaps-chips { display: flex; flex-direction: column; gap: 6px; }
-.gap-row { background: var(--surface-2, rgba(255,255,255,.04)); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
-.gap-nutr { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
-.gap-why { font-size: 12.5px; color: var(--fg); margin-top: 2px; }
-.gap-swap { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.gap-row { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+.gap-nutr { font-size: 12px; font-weight: 700; color: var(--amber); text-transform: uppercase; letter-spacing: .04em; }
+.gap-why { font-size: 12.5px; color: var(--text); margin-top: 2px; }
+.gap-swap { font-size: 12px; color: var(--text-2); margin-top: 2px; }
 .gaps-foods-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-top: 2px; }
 .gaps-foods { display: flex; flex-direction: column; gap: 6px; }
-.gap-food { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2, rgba(255,255,255,.04)); border: 1px solid var(--border); }
+.gap-food { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
 .gap-food-info { min-width: 0; flex: 1; }
-.gap-food-name { font-size: 13px; font-weight: 600; color: var(--fg); }
-.gap-food-reason { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
-.gap-save-btn { flex-shrink: 0; font-size: 11.5px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--fg); cursor: pointer; }
-.gap-save-btn.saved { border-color: var(--accent); color: var(--accent); }
+.gap-food-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.gap-food-reason { font-size: 11.5px; color: var(--text-2); margin-top: 1px; }
+.gap-save-btn { flex-shrink: 0; font-size: 11.5px; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); cursor: pointer; }
+.gap-save-btn.saved { border-color: var(--amber); color: var(--amber); }
+
+/* ── in-season produce ───────────────────────────────────── */
+.gaps-season { display: flex; flex-direction: column; gap: 8px; }
+.season-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.season-title { font-size: 12.5px; font-weight: 700; color: var(--text); }
+.season-region { font-size: 11.5px; font-weight: 600; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--good); cursor: pointer; flex-shrink: 0; }
+.season-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.season-chip { font-size: 11.5px; font-weight: 600; padding: 5px 10px; border-radius: 999px; background: var(--amber-soft); color: var(--amber); border: 1px solid transparent; }
+.season-note { font-size: 11px; color: var(--muted); line-height: 1.45; }
 
 /* ── history ─────────────────────────────────────────────── */
 .chart-panel { padding:16px 12px 12px; }

@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v51';
+const APP_BUILD = 'v52';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -1177,6 +1177,112 @@ function manualModal() {
 const GAPS_KEY = 'fuel_gaps_v1';
 let gapsBusy = false;
 
+/* ══════════ in-season produce (deterministic AU calendar) ══════════
+   Broad monthly guide per climate zone — not AI numbers. Zone labels:
+   qld = QLD/NT (tropical–subtropical) · nsw = NSW/ACT (temperate)
+   vic = VIC/TAS (cool) · sawa = SA/WA (mediterranean) */
+const SEASONAL_ZONES = [
+  { id: 'qld', label: 'QLD/NT' },
+  { id: 'nsw', label: 'NSW/ACT' },
+  { id: 'vic', label: 'VIC/TAS' },
+  { id: 'sawa', label: 'SA/WA' },
+];
+const SEASONAL_FOODS = {
+  qld: {
+    Jan: ['Mango', 'Pineapple', 'Papaya', 'Lychee', 'Banana', 'Avocado', 'Tomato', 'Zucchini', 'Sweet corn', 'Cucumber'],
+    Feb: ['Mango', 'Pineapple', 'Papaya', 'Banana', 'Avocado', 'Tomato', 'Zucchini', 'Capsicum', 'Cucumber', 'Sweet potato'],
+    Mar: ['Pineapple', 'Papaya', 'Banana', 'Avocado', 'Lime & lemon', 'Tomato', 'Zucchini', 'Sweet potato', 'Pumpkin', 'Green beans'],
+    Apr: ['Banana', 'Avocado', 'Citrus', 'Papaya', 'Broccoli', 'Cauliflower', 'Pumpkin', 'Sweet potato', 'Green beans', 'Snow peas'],
+    May: ['Banana', 'Avocado', 'Mandarin', 'Orange', 'Pumpkin', 'Broccoli', 'Cauliflower', 'Cabbage', 'Sweet potato', 'Silverbeet', 'Leek'],
+    Jun: ['Mandarin', 'Orange', 'Grapefruit', 'Avocado', 'Pumpkin', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Parsnip'],
+    Jul: ['Mandarin', 'Orange', 'Grapefruit', 'Avocado', 'Pumpkin', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Sweet potato'],
+    Aug: ['Citrus', 'Avocado', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Silverbeet', 'Leek', 'Sweet potato'],
+    Sep: ['Strawberry', 'Banana', 'Avocado', 'Broccoli', 'Asparagus', 'Green beans', 'Zucchini', 'Capsicum', 'Lettuce', 'Spring onion'],
+    Oct: ['Strawberry', 'Banana', 'Avocado', 'Asparagus', 'Green beans', 'Zucchini', 'Capsicum', 'Tomato', 'Lettuce', 'Sweet corn'],
+    Nov: ['Strawberry', 'Mango (early)', 'Pineapple', 'Banana', 'Avocado', 'Green beans', 'Zucchini', 'Capsicum', 'Tomato', 'Sweet corn', 'Cucumber', 'Peas'],
+    Dec: ['Mango', 'Pineapple', 'Banana', 'Avocado', 'Lychee', 'Tomato', 'Zucchini', 'Capsicum', 'Sweet corn', 'Cucumber', 'Green beans'],
+  },
+  nsw: {
+    Jan: ['Peach', 'Nectarine', 'Berries', 'Tomato', 'Zucchini', 'Sweet corn', 'Capsicum', 'Cucumber', 'Green beans', 'Watermelon', 'Rockmelon'],
+    Feb: ['Peach', 'Nectarine', 'Berries', 'Grapes', 'Tomato', 'Zucchini', 'Sweet corn', 'Capsicum', 'Cucumber', 'Green beans', 'Pumpkin'],
+    Mar: ['Apple (early)', 'Pear', 'Grapes', 'Figs', 'Tomato', 'Zucchini', 'Pumpkin', 'Sweet potato', 'Beetroot', 'Broccoli'],
+    Apr: ['Apple', 'Pear', 'Quince', 'Pumpkin', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Leek', 'Sweet potato'],
+    May: ['Apple', 'Pear', 'Quince', 'Pumpkin', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Leek', 'Parsnip'],
+    Jun: ['Apple', 'Pear', 'Orange', 'Mandarin', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Parsnip', 'Leek'],
+    Jul: ['Apple', 'Pear', 'Orange', 'Mandarin', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Parsnip', 'Leek'],
+    Aug: ['Apple', 'Citrus', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Leek', 'Silverbeet'],
+    Sep: ['Asparagus', 'Strawberry', 'Broccoli', 'Cauliflower', 'Green beans', 'Peas', 'Zucchini', 'Lettuce', 'Spring onion', 'Spinach'],
+    Oct: ['Asparagus', 'Strawberry', 'Green beans', 'Peas', 'Zucchini', 'Capsicum', 'Tomato', 'Lettuce', 'Sweet corn', 'Spinach'],
+    Nov: ['Strawberry', 'Cherries (late)', 'Asparagus', 'Green beans', 'Peas', 'Zucchini', 'Capsicum', 'Tomato', 'Sweet corn', 'Lettuce'],
+    Dec: ['Cherries', 'Berries', 'Peach', 'Nectarine', 'Tomato', 'Zucchini', 'Sweet corn', 'Capsicum', 'Cucumber', 'Green beans', 'Peas'],
+  },
+  vic: {
+    Jan: ['Berries', 'Stone fruit', 'Cherries', 'Tomato', 'Zucchini', 'Sweet corn', 'Capsicum', 'Green beans', 'Peas', 'Cucumber'],
+    Feb: ['Berries', 'Stone fruit', 'Grapes', 'Tomato', 'Zucchini', 'Sweet corn', 'Capsicum', 'Green beans', 'Pumpkin', 'Leek'],
+    Mar: ['Apple', 'Pear', 'Berries', 'Tomato', 'Zucchini', 'Pumpkin', 'Broccoli', 'Cauliflower', 'Beetroot', 'Leek'],
+    Apr: ['Apple', 'Pear', 'Quince', 'Pumpkin', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Leek', 'Parsnip'],
+    May: ['Apple', 'Pear', 'Quince', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Leek', 'Parsnip', 'Brussels sprouts'],
+    Jun: ['Apple', 'Pear', 'Citrus', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Parsnip', 'Leek', 'Brussels sprouts'],
+    Jul: ['Apple', 'Pear', 'Citrus', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Parsnip', 'Leek'],
+    Aug: ['Apple', 'Citrus', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Leek', 'Silverbeet'],
+    Sep: ['Asparagus', 'Strawberry', 'Broccoli', 'Cauliflower', 'Green beans', 'Peas', 'Spinach', 'Lettuce', 'Leek', 'Spring onion'],
+    Oct: ['Asparagus', 'Strawberry', 'Green beans', 'Peas', 'Zucchini', 'Spinach', 'Lettuce', 'Broccoli', 'Cauliflower', 'Spring onion'],
+    Nov: ['Strawberry', 'Asparagus', 'Green beans', 'Peas', 'Zucchini', 'Broccoli', 'Cauliflower', 'Lettuce', 'Spinach', 'Spring onion'],
+    Dec: ['Cherries', 'Berries', 'Stone fruit', 'Tomato', 'Zucchini', 'Green beans', 'Peas', 'Broccoli', 'Cauliflower', 'Sweet corn'],
+  },
+  sawa: {
+    Jan: ['Stone fruit', 'Grapes', 'Berries', 'Tomato', 'Zucchini', 'Sweet corn', 'Capsicum', 'Cucumber', 'Green beans', 'Rockmelon'],
+    Feb: ['Stone fruit', 'Grapes', 'Berries', 'Tomato', 'Zucchini', 'Sweet corn', 'Capsicum', 'Cucumber', 'Green beans', 'Pumpkin'],
+    Mar: ['Apple', 'Pear', 'Grapes', 'Figs', 'Tomato', 'Zucchini', 'Pumpkin', 'Broccoli', 'Cauliflower', 'Beetroot', 'Sweet potato'],
+    Apr: ['Apple', 'Pear', 'Quince', 'Broccoli', 'Cauliflower', 'Cabbage', 'Pumpkin', 'Beetroot', 'Carrot', 'Leek', 'Sweet potato'],
+    May: ['Apple', 'Pear', 'Quince', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Leek', 'Parsnip'],
+    Jun: ['Apple', 'Pear', 'Citrus', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Parsnip', 'Leek'],
+    Jul: ['Apple', 'Pear', 'Citrus', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Parsnip', 'Leek'],
+    Aug: ['Apple', 'Citrus', 'Broccoli', 'Cauliflower', 'Cabbage', 'Beetroot', 'Carrot', 'Leek', 'Silverbeet'],
+    Sep: ['Asparagus', 'Strawberry', 'Green beans', 'Peas', 'Zucchini', 'Broccoli', 'Cauliflower', 'Lettuce', 'Spinach', 'Spring onion'],
+    Oct: ['Asparagus', 'Strawberry', 'Green beans', 'Peas', 'Zucchini', 'Capsicum', 'Tomato', 'Lettuce', 'Sweet corn', 'Spinach'],
+    Nov: ['Strawberry', 'Cherries (late)', 'Asparagus', 'Green beans', 'Peas', 'Zucchini', 'Capsicum', 'Tomato', 'Sweet corn', 'Lettuce'],
+    Dec: ['Cherries', 'Berries', 'Stone fruit', 'Tomato', 'Zucchini', 'Sweet corn', 'Capsicum', 'Cucumber', 'Green beans', 'Peas'],
+  },
+};
+const SEASON_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function seasonalZone() {
+  return S.getSetting('region') || 'qld';
+}
+function seasonalList() {
+  const now = new Date();
+  const month = SEASON_MONTHS[now.getMonth()];
+  const zone = SEASONAL_FOODS[seasonalZone()] || SEASONAL_FOODS.qld;
+  return { month, items: zone[month] || [] };
+}
+
+function renderSeasonal() {
+  const host = $('#gaps-season');
+  if (!host) return;
+  const { month, items } = seasonalList();
+  const zone = seasonalZone();
+  host.innerHTML = `
+    <div class="season-row">
+      <span class="season-title">In season now · ${month}</span>
+      <button class="season-region" id="btn-season-region" type="button">${zone.toUpperCase()}</button>
+    </div>
+    <div class="season-chips">${items.map((f) => `<span class="season-chip">${esc(f)}</span>`).join('')}</div>
+    <p class="season-note">Picked at the right time, in your region — fresher, cheaper, and no cold-storage gassing.</p>`;
+}
+
+function cycleSeasonZone() {
+  const zones = SEASONAL_ZONES.map((z) => z.id);
+  const cur = seasonalZone();
+  const next = zones[(zones.indexOf(cur) + 1) % zones.length] || 'qld';
+  S.setSetting('region', next);
+  renderSeasonal();
+}
+
+$('#gaps-season')?.addEventListener('click', (e) => {
+  if (e.target.closest('#btn-season-region')) cycleSeasonZone();
+});
+
 function readCachedGaps() {
   try { return JSON.parse(localStorage.getItem(GAPS_KEY) || 'null'); } catch { return null; }
 }
@@ -1204,7 +1310,14 @@ function build7DayGapsPayload() {
     }
   }
   const items = Array.from(map.values()).sort((a, b) => b.count - a.count || b.kcal - a.kcal).slice(0, 40);
-  return { daysLogged, goal: { kcal: st.goals.kcal, protein: st.goals.protein }, items };
+  const { month, items: inSeason } = seasonalList();
+  return {
+    daysLogged,
+    goal: { kcal: st.goals.kcal, protein: st.goals.protein },
+    region: seasonalZone(),
+    season: { month, inSeason },
+    items,
+  };
 }
 
 function renderNutritionGaps() {
@@ -1305,6 +1418,7 @@ const METRIC_META = {
 };
 
 function renderHistory() {
+  renderSeasonal();
   renderNutritionGaps();
   const days = S.recentDays(14);
   const st = S.getState();
