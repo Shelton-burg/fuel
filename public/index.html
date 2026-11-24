@@ -149,6 +149,18 @@
     <!-- ══ HISTORY ══ -->
     <section id="view-history" class="view">
       <div class="page-head"><h1>History</h1><p class="muted">Last 14 days</p></div>
+
+      <div class="panel gaps-panel" id="gaps-panel">
+        <div class="gaps-head">
+          <div>
+            <h2 class="ph2">7-Day Balance &amp; Gaps</h2>
+            <p class="muted sm" id="gaps-sub">Vitamins, minerals &amp; fibre from your real food log</p>
+          </div>
+          <button class="chip" id="btn-gaps-refresh" type="button">Analyse</button>
+        </div>
+        <div id="gaps-body" class="gaps-body"></div>
+      </div>
+
       <div class="panel chart-panel">
         <div class="chip-row seg" id="hist-metrics">
           <button class="chip sel" data-metric="kcal" type="button">Calories</button>

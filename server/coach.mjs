@@ -339,3 +339,64 @@ Answer the last message from Them. JSON only.`;
   const parsed = await askModel(system, user, keys, CHAT_SCHEMA, 1600);
   return sanitizeChat(parsed, ctx);
 }
+
+/* ── 7-day nutrition balance & micronutrient gaps ────────────────────────── */
+const GAPS_SCHEMA = {
+  type: 'object',
+  properties: {
+    headline: { type: 'string' },
+    gaps: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          nutrient: { type: 'string' },
+          why: { type: 'string' },
+          swap: { type: 'string' },
+        },
+        required: ['nutrient', 'why', 'swap'],
+      },
+    },
+    next3Days: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          food: { type: 'string' },
+          reason: { type: 'string' },
+          kcal: { type: 'number' },
+          p: { type: 'number' },
+          c: { type: 'number' },
+          f: { type: 'number' },
+        },
+        required: ['food', 'reason', 'kcal', 'p', 'c', 'f'],
+      },
+    },
+  },
+  required: ['headline', 'gaps', 'next3Days'],
+};
+
+export async function nutritionGaps(payload, keys) {
+  const system = `You are FUEL's practical Australian nutritionist. Look at the user's last 7 days of logged foods and spot likely vitamin, mineral, omega-3, or fibre gaps from their actual food patterns (e.g. heavy on chicken & white rice -> low iron/B12, omega-3, folate/fibre; low dairy/greens -> low calcium/potassium/magnesium).
+Rules:
+- Australian English, plain and direct, no lecturing, no fake exact mg numbers.
+- Fit their calorie & protein goals.
+- Return JSON ONLY: {"headline": string (<= 110 chars), "gaps": [{"nutrient": string, "why": string (<= 90 chars), "swap": string (<= 90 chars)}] (2 to 4 items), "next3Days": [{"food": string (e.g. "Lean beef mince (150g)"), "reason": string (<= 60 chars), "kcal": number, "p": number, "c": number, "f": number}] (4 to 6 everyday Australian supermarket foods)}.`;
+  const user = `Last 7 days food log summary:\n${JSON.stringify(payload)}\n\nReturn JSON only.`;
+  const raw = await askModel(system, user, keys, GAPS_SCHEMA, 1400);
+  const headline = clamp(raw?.headline || 'Balanced week — keep rotating proteins and veg.', 140);
+  const gaps = (Array.isArray(raw?.gaps) ? raw.gaps : []).slice(0, 4).map((g) => ({
+    nutrient: clamp(g?.nutrient || 'Variety', 40),
+    why: clamp(g?.why || '', 120),
+    swap: clamp(g?.swap || '', 120),
+  })).filter((g) => g.nutrient && (g.why || g.swap));
+  const next3Days = (Array.isArray(raw?.next3Days) ? raw.next3Days : []).slice(0, 6).map((x) => ({
+    food: clamp(x?.food || '', 60),
+    reason: clamp(x?.reason || '', 90),
+    kcal: Math.max(0, Math.round(Number(x?.kcal) || 0)),
+    p: Math.max(0, Math.round((Number(x?.p) || 0) * 10) / 10),
+    c: Math.max(0, Math.round((Number(x?.c) || 0) * 10) / 10),
+    f: Math.max(0, Math.round((Number(x?.f) || 0) * 10) / 10),
+  })).filter((x) => x.food);
+  return { headline, gaps, next3Days, generatedAt: new Date().toISOString() };
+}

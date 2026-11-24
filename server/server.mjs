@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { parseLabel } from './label.mjs';
-import { coachAdvice, weeklyReview, coachChat } from './coach.mjs';
+import { coachAdvice, coachChat, weeklyReview, nutritionGaps } from './coach.mjs';
 import { mealPlan } from './mealplan.mjs';
 import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured } from './sync.mjs';
 import { sendTelegram, telegramConfigured } from './notify.mjs';
@@ -140,6 +140,20 @@ app.post('/api/coach/chat', AUTH.requireUser, AUTH.aiBudget('chat', 120), async 
   } catch (e) {
     console.error('[coach-chat]', e.detail || e.message);
     res.status(502).json({ error: 'coach_failed', message: 'The coach could not answer just now — try again.' });
+  }
+});
+
+app.post('/api/nutrition-gaps', AUTH.requireUser, AUTH.aiBudget('gaps', 30), async (req, res) => {
+  try {
+    if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
+    const payload = req.body && req.body.payload;
+    if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'no_payload' });
+    if (JSON.stringify(payload).length > 20000) return res.status(413).json({ error: 'too_large' });
+    const result = await nutritionGaps(payload, KEYS);
+    res.json({ ok: true, result });
+  } catch (e) {
+    console.error('[nutrition-gaps]', e.detail || e.message);
+    res.status(502).json({ error: 'gaps_failed', message: 'Could not analyse your last 7 days right now — try again.' });
   }
 });
 

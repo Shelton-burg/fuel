@@ -1173,6 +1173,131 @@ function manualModal() {
   });
 }
 
+/* ══════════ 7-day nutrition balance & gaps ══════════ */
+const GAPS_KEY = 'fuel_gaps_v1';
+let gapsBusy = false;
+
+function readCachedGaps() {
+  try { return JSON.parse(localStorage.getItem(GAPS_KEY) || 'null'); } catch { return null; }
+}
+
+function build7DayGapsPayload() {
+  const days = S.recentDays(7);
+  const st = S.getState();
+  const map = new Map();
+  let daysLogged = 0;
+  for (const d of days) {
+    const entries = (st.days && st.days[d.key]) || [];
+    if (!entries.length) continue;
+    daysLogged++;
+    for (const e of entries) {
+      const name = String(e.name || '').trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      const prev = map.get(key) || { name, count: 0, kcal: 0, p: 0, c: 0, f: 0 };
+      prev.count += 1;
+      prev.kcal += Math.round(Number(e.kcal) || 0);
+      prev.p += Math.round(Number(e.p) || 0);
+      prev.c += Math.round(Number(e.c) || 0);
+      prev.f += Math.round(Number(e.f) || 0);
+      map.set(key, prev);
+    }
+  }
+  const items = Array.from(map.values()).sort((a, b) => b.count - a.count || b.kcal - a.kcal).slice(0, 40);
+  return { daysLogged, goal: { kcal: st.goals.kcal, protein: st.goals.protein }, items };
+}
+
+function renderNutritionGaps() {
+  const body = $('#gaps-body');
+  const btn = $('#btn-gaps-refresh');
+  const sub = $('#gaps-sub');
+  if (!body || !btn) return;
+  const cached = readCachedGaps();
+  if (gapsBusy) {
+    btn.disabled = true;
+    btn.textContent = 'Analysing…';
+    body.innerHTML = `<p class="muted sm">Scanning your last 7 days of food logs…</p>`;
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = cached ? 'Refresh' : 'Analyse';
+  if (!cached) {
+    body.innerHTML = `<p class="muted sm">Tap <b>Analyse</b> to spot likely vitamin, mineral or fibre gaps from your last 7 days of logged foods.</p>`;
+    return;
+  }
+  if (sub && cached.generatedAt) {
+    const dt = new Date(cached.generatedAt);
+    sub.textContent = `Updated ${dt.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}`;
+  }
+  const gapsHtml = (cached.gaps || []).map((g) => `
+    <div class="gap-row">
+      <div class="gap-nutr">${esc(g.nutrient)}</div>
+      ${g.why ? `<div class="gap-why">${esc(g.why)}</div>` : ''}
+      ${g.swap ? `<div class="gap-swap">${esc(g.swap)}</div>` : ''}
+    </div>`).join('');
+  const foodsHtml = (cached.next3Days || []).map((x, idx) => `
+    <div class="gap-food">
+      <div class="gap-food-info">
+        <div class="gap-food-name">${esc(x.food)}</div>
+        <div class="gap-food-reason">${esc(x.reason)} · ${x.kcal} kcal · ${x.p}g P</div>
+      </div>
+      <button class="gap-save-btn" data-gap-save="${idx}" type="button">☆ Save</button>
+    </div>`).join('');
+  body.innerHTML = `
+    <div class="gaps-headline">${esc(cached.headline || '')}</div>
+    ${gapsHtml ? `<div class="gaps-chips">${gapsHtml}</div>` : ''}
+    ${foodsHtml ? `<div class="gaps-foods-title">Eat over the next 3 days</div><div class="gaps-foods">${foodsHtml}</div>` : ''}`;
+}
+
+async function runNutritionGaps() {
+  if (gapsBusy) return;
+  const payload = build7DayGapsPayload();
+  if (!payload.items.length) {
+    toast('Log a few foods first so I can spot your 7-day patterns');
+    return;
+  }
+  gapsBusy = true;
+  renderNutritionGaps();
+  try {
+    const r = await fetch('/api/nutrition-gaps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payload }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok || !j.result) throw new Error(j.message || 'Analysis failed');
+    localStorage.setItem(GAPS_KEY, JSON.stringify(j.result));
+    toast('7-day balance updated');
+  } catch (e) {
+    toast(e.message || 'Could not analyse your last 7 days');
+  } finally {
+    gapsBusy = false;
+    renderNutritionGaps();
+  }
+}
+
+$('#btn-gaps-refresh')?.addEventListener('click', runNutritionGaps);
+$('#gaps-body')?.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-gap-save]');
+  if (!b) return;
+  const cached = readCachedGaps();
+  const item = cached?.next3Days?.[Number(b.dataset.gapSave)];
+  if (!item) return;
+  S.saveFood({
+    name: item.food,
+    brand: 'FUEL Balance',
+    kcal: item.kcal,
+    p: item.p,
+    c: item.c,
+    f: item.f,
+    unit: 'serve',
+    servingGrams: 100,
+  }, { fav: true });
+  b.classList.add('saved');
+  b.textContent = '★ Saved';
+  toast(`Saved "${item.food}" to Favourites`);
+});
+
 /* ══════════ history ══════════ */
 const METRIC_META = {
   kcal: { legend: 'Daily kcal vs goal', unit: 'kcal' },
@@ -1180,6 +1305,7 @@ const METRIC_META = {
 };
 
 function renderHistory() {
+  renderNutritionGaps();
   const days = S.recentDays(14);
   const st = S.getState();
   const meta = METRIC_META[histMetric] || METRIC_META.kcal;
