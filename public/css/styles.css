@@ -388,6 +388,33 @@ svg.sm { width:14px; height:14px; }
 .season-chip { font-size: 11.5px; font-weight: 600; padding: 5px 10px; border-radius: 999px; background: var(--amber-soft); color: var(--amber); border: 1px solid transparent; }
 .season-note { font-size: 11px; color: var(--muted); line-height: 1.45; }
 
+/* ── fruit & veg tally ───────────────────────────────────── */
+.fv-panel { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; }
+.fv-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.fv-head b { font-size: 13.5px; color: var(--text); }
+.fv-rows { display: flex; flex-direction: column; gap: 6px; }
+.fv-row { display: flex; align-items: center; gap: 8px; }
+.fv-name { font-size: 12px; font-weight: 600; color: var(--text-2); width: 62px; flex-shrink: 0; }
+.fv-bar { flex: 1; height: 7px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
+.fv-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--good), #2BE8A8); transition: width .35s ease; }
+.fv-num { font-size: 12px; font-weight: 700; color: var(--text); min-width: 30px; text-align: right; }
+.fv-list { line-height: 1.5; }
+
+/* ── quick feel ──────────────────────────────────────────── */
+.qf-panel { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; }
+.qf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.qf-head b { font-size: 13.5px; color: var(--text); }
+.qf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.qf-scale { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.qf-label { font-size: 11.5px; font-weight: 600; color: var(--text-2); }
+.qf-dots { display: flex; gap: 4px; }
+.qf-dot { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line-2); background: transparent; color: var(--text-2); font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.qf-dot.sel { background: var(--amber); border-color: var(--amber); color: #1A1203; }
+
+/* ── session feel sheet (train finish) ───────────────────── */
+.sf-scale { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }
+.sf-scale .feel-btn { width: 34px; height: 34px; font-size: 13px; }
+
 /* ── history ─────────────────────────────────────────────── */
 .chart-panel { padding:16px 12px 12px; }
 #hist-chart { width:100%; display:block; }

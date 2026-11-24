@@ -215,6 +215,37 @@ function finishSession() {
   const bar = document.getElementById('restbar'); if (bar) bar.hidden = true;
   ui.mode = 'auto'; ui.justFinished = true;
   renderTrain();
+  if (!s.feel) setTimeout(() => showFinishFeel(s), 700);
+}
+
+/* v54 — post-session feel sheet: 1 rough … 10 brilliant (feeds Coach readiness) */
+function showFinishFeel(s) {
+  const btns = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) =>
+    `<button class="feel-btn${s.feel === n ? ' on' : ''}" data-ffeel="${n}" type="button">${n}</button>`
+  ).join('');
+  const back = document.createElement('div');
+  back.className = 'modal-backdrop';
+  back.id = 'session-feel-modal';
+  back.innerHTML = `<div class="modal">
+    <div class="modal-head">
+      <button class="icon-btn" data-ffeel-skip type="button" aria-label="Skip"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">How'd that session feel?</div>
+    </div>
+    <p class="muted sm" style="margin:0 0 4px">1 rough · 10 brilliant — feeds your Coach readiness</p>
+    <div class="sf-scale">${btns}</div>
+  </div>`;
+  document.body.appendChild(back);
+  back.addEventListener('click', (e) => {
+    if (e.target.closest('[data-ffeel-skip]')) { back.remove(); return; }
+    const b = e.target.closest('[data-ffeel]');
+    if (!b) return;
+    s.feel = Number(b.dataset.ffeel);
+    S.putSession(K(), s);
+    S.logCheckin(S.dayKey(), { energy: Math.round(s.feel / 2) });
+    back.remove();
+    vib(10);
+    toastT(`Session feel ${s.feel}/10 logged`);
+  });
 }
 
 let discardArmed = false;

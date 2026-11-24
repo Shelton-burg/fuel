@@ -27,7 +27,19 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v53';
+/* fruit & veg name dictionaries — MUST live above seedDemo()/renderToday()
+   (module-load renders Today before later consts exist — TDZ crash otherwise) */
+const VEG_NAMES = ['broccoli', 'cauliflower', 'cabbage', 'carrot', 'spinach', 'kale', 'lettuce', 'salad', 'greens',
+  'tomato', 'zucchini', 'cucumber', 'capsicum', 'pepper', 'onion', 'garlic', 'pumpkin', 'potato', 'sweet potato',
+  'bean', 'beans', 'pea', 'peas', 'corn', 'celery', 'mushroom', 'beetroot', 'silverbeet', 'asparagus', 'eggplant',
+  'brussels', 'leek', 'snow pea', 'bok choy', 'choy', 'avocado', 'squash', 'radish', 'turnip', 'parsnip', 'chilli',
+  'zoodles', 'coleslaw', 'kimchi', 'sauerkraut', 'pickle', 'olive', 'lentil', 'chickpea', 'tofu', 'edamame', 'tempeh'];
+const FRUIT_NAMES = ['apple', 'banana', 'orange', 'mandarin', 'mango', 'strawberr', 'blueberr', 'raspberr', 'blackberr',
+  'berr', 'grape', 'pineapple', 'watermelon', 'rockmelon', 'melon', 'peach', 'nectarine', 'plum', 'apricot', 'cherr',
+  'pear', 'kiwi', 'passionfruit', 'lychee', 'papaya', 'pawpaw', 'lemon', 'lime', 'grapefruit', 'fig', 'date', 'prune',
+  'raisin', 'sultana', 'cranberr', 'pomegranate', 'mangosteen', 'dragonfruit', 'durian', 'guava'];
+
+const APP_BUILD = 'v54';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -314,6 +326,8 @@ function renderToday() {
     </div>`;
   }).join('');
   renderDailyFeel();
+  renderFvTally();
+  renderQuickFeel();
   renderQuick();
   renderWeek();
 }
@@ -351,6 +365,78 @@ $('#daily-feel')?.addEventListener('click', (e) => {
   vib(8);
   renderDailyFeel();
   toast(`Daily feel logged: ${n}/10`);
+});
+
+/* ══════════ fruit & veg tally (deterministic, no AI) ══════════ */
+
+function fvMatches(name) {
+  const n = ` ${String(name || '').toLowerCase().replace(/[^a-z ]/g, ' ')} `;
+  const has = (arr) => arr.some((k) => n.includes(` ${k}`));
+  return { veg: has(VEG_NAMES), fruit: has(FRUIT_NAMES) };
+}
+
+function fvForDay(key) {
+  const day = (S.getState().logs || {})[key];
+  const meals = (day && day.meals) || {};
+  let veg = 0, fruit = 0;
+  const foods = [];
+  for (const rows of Object.values(meals)) {
+    for (const e of rows || []) {
+      const m = fvMatches(e && e.name);
+      if (!m.veg && !m.fruit) continue;
+      if (m.veg) veg++;
+      if (m.fruit) fruit++;
+      foods.push(String(e.name));
+    }
+  }
+  return { veg, fruit, foods };
+}
+
+function renderFvTally() {
+  const el = $('#fv-tally');
+  if (!el) return;
+  const { veg, fruit, foods } = fvForDay(selDate);
+  const pct = (n, goal) => Math.min(100, Math.round((n / goal) * 100));
+  el.innerHTML = `
+    <div class="fv-head"><b>Fruit &amp; veg</b><span class="muted sm">${veg}/5 serves veg · ${fruit}/2 fruit</span></div>
+    <div class="fv-rows">
+      <div class="fv-row"><span class="fv-name">🥦 Veg</span><div class="fv-bar"><i style="width:${pct(veg, 5)}%"></i></div><b class="fv-num">${veg}/5</b></div>
+      <div class="fv-row"><span class="fv-name">🍓 Fruit</span><div class="fv-bar"><i style="width:${pct(fruit, 2)}%"></i></div><b class="fv-num">${fruit}/2</b></div>
+    </div>
+    ${foods.length
+      ? `<p class="muted sm fv-list">Counted: ${foods.slice(0, 8).map(esc).join(' · ')}${foods.length > 8 ? ' …' : ''}</p>`
+      : `<p class="muted sm">Nothing counted yet — log a veg or fruit serve and it shows up here.</p>`}`;
+}
+
+/* ══════════ quick feel (energy / mood / soreness / hunger) ══════════ */
+function renderQuickFeel() {
+  const el = $('#quick-feel');
+  if (!el) return;
+  const c = S.getCheckin(selDate) || {};
+  el.innerHTML = `
+    <div class="qf-head"><b>${isToday() ? "Today's feel" : 'Feel this day'}</b><span class="muted sm">tap to log · feeds Coach</span></div>
+    <div class="qf-grid">
+      ${S.CHECKIN_SCALES.map((sc) => `
+        <div class="qf-scale" data-qscale="${sc.key}">
+          <span class="qf-label">${sc.label}</span>
+          <div class="qf-dots">${[1, 2, 3, 4, 5].map((n) => `<button class="qf-dot${c[sc.key] === n ? ' sel' : ''}" data-qscore="${n}" type="button" aria-label="${sc.label} ${n}">${n}</button>`).join('')}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+$('#quick-feel')?.addEventListener('click', (e) => {
+  const dot = e.target.closest('[data-qscore]');
+  if (!dot) return;
+  const cell = dot.closest('[data-qscale]');
+  const k = cell.dataset.qscale;
+  const n = Number(dot.dataset.qscore);
+  const c = S.getCheckin(selDate) || {};
+  c[k] = n;
+  S.logCheckin(selDate, c);
+  vib(6);
+  renderQuickFeel();
+  renderCheckinCard();
+  toast(`${cell.querySelector('.qf-label').textContent} ${n}/5 logged`);
 });
 
 $('#meals').addEventListener('click', (e) => {
@@ -1312,11 +1398,19 @@ function build7DayGapsPayload() {
   }
   const items = Array.from(map.values()).sort((a, b) => b.count - a.count || b.kcal - a.kcal).slice(0, 40);
   const { month, items: inSeason } = seasonalList();
+  let vegTotal = 0, fruitTotal = 0, fvDays = 0;
+  for (const d of days) {
+    const fv = fvForDay(d.key);
+    if (fv.veg || fv.fruit) fvDays++;
+    vegTotal += fv.veg;
+    fruitTotal += fv.fruit;
+  }
   return {
     daysLogged,
     goal: { kcal: st.goals.kcal, protein: st.goals.protein },
     region: seasonalZone(),
     season: { month, inSeason },
+    fruitVeg: { avgVeg: Math.round((vegTotal / 7) * 10) / 10, avgFruit: Math.round((fruitTotal / 7) * 10) / 10, daysWith: fvDays },
     items,
   };
 }
