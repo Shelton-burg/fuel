@@ -215,7 +215,7 @@ export function foodKey(f) {
   const br = String((f && f.brand) || '').toLowerCase().trim();
   return 'nm:' + nm + '|' + br;
 }
-export function saveFood(f) {
+export function saveFood(f, opts = {}) {
   if (!f || !f.name) return null;
   state.foods = state.foods || {};
   const nm = String(f.name).toLowerCase().trim();
@@ -239,9 +239,12 @@ export function saveFood(f) {
     ids.sort((a, b) => (state.foods[b].ts || 0) - (state.foods[a].ts || 0));
     for (const old of ids.slice(300)) delete state.foods[old];
   }
-  // Anything actually logged is worth keeping one tap away — star it unless the
-  // owner deliberately un-starred it (settings.foodUnstarred).
-  if (!merged.isRecipe) ensureFoodFav(merged);
+  // Explicit fav option wins; otherwise auto-star unless previously unstarred.
+  if (!merged.isRecipe) {
+    if (opts.fav === true) forceFoodFav(merged, true);
+    else if (opts.fav === false) forceFoodFav(merged, false);
+    else ensureFoodFav(merged);
+  }
   save();
   return id;
 }
@@ -668,8 +671,28 @@ const favShape = (food) => ({
   name: food.name, brand: food.brand || '', basis: food.basis || '100g',
   kcal: food.kcal, p: food.p || 0, c: food.c || 0, f: food.f || 0,
   kcal100: food.kcal100 ?? null, servingLabel: food.servingLabel || '',
+  servingGrams: food.servingGrams ?? null,
   barcode: food.barcode || null, image: food.image || null,
 });
+export function forceFoodFav(food, on) {
+  if (!food || !food.name) return false;
+  const k = String(food.name).toLowerCase().trim();
+  state.settings = state.settings || {};
+  const list = state.settings.foodFavs || [];
+  const i = list.findIndex((f) => String(f.name || '').toLowerCase().trim() === k);
+  if (on) {
+    if (i >= 0) list[i] = { ...list[i], ...favShape(food) };
+    else list.unshift(favShape(food));
+    state.settings.foodUnstarred = (state.settings.foodUnstarred || []).filter((n) => String(n).toLowerCase().trim() !== k);
+  } else {
+    if (i >= 0) list.splice(i, 1);
+    const un = (state.settings.foodUnstarred || []).filter((n) => String(n).toLowerCase().trim() !== k);
+    un.unshift(food.name);
+    state.settings.foodUnstarred = un.slice(0, 200);
+  }
+  state.settings.foodFavs = list.slice(0, 60);
+  return on;
+}
 export function ensureFoodFav(food) {
   if (!food || !food.name) return false;
   const k = String(food.name).toLowerCase().trim();

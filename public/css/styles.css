@@ -1224,3 +1224,33 @@ button.stat-chip:active { transform:scale(.96); }
   font-size:13px; font-weight:700; white-space:nowrap;
 }
 .prog-banner-chev { width:13px; height:13px; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; flex:0 0 auto; }
+
+/* ── scanned / label food: visible Save to Favourites controls ─ */
+.fav-pill {
+  margin-left:auto; display:inline-flex; align-items:center; gap:5px; flex:0 0 auto;
+  padding:6px 11px; border-radius:999px;
+  background:var(--panel-2); border:1px solid var(--line-2); color:var(--text-2);
+  font-size:12px; font-weight:700; white-space:nowrap;
+  transition:transform .1s ease, border-color .15s ease, background .15s ease;
+}
+.fav-pill:active { transform:scale(.95); }
+.fav-pill.on { background:var(--amber-soft); border-color:var(--amber); color:var(--amber); }
+.fav-toggle-bar {
+  width:100%; display:flex; align-items:center; gap:10px;
+  padding:10px 12px; margin:8px 0 4px; border-radius:14px; text-align:left;
+  background:var(--panel-2); border:1px solid var(--line-2); color:var(--text);
+  transition:border-color .15s ease, background .15s ease;
+}
+.fav-toggle-bar.on { background:var(--amber-soft); border-color:var(--amber); }
+.fav-toggle-star { font-size:18px; line-height:1; color:var(--muted); flex:0 0 auto; }
+.fav-toggle-bar.on .fav-toggle-star { color:var(--amber); }
+.fav-toggle-txt { display:flex; flex-direction:column; gap:1px; min-width:0; flex:1 1 auto; }
+.fav-toggle-txt b { font-size:13px; font-weight:700; color:var(--text); }
+.fav-toggle-txt small { font-size:11.5px; color:var(--muted); }
+.fav-toggle-state {
+  font-size:11px; font-weight:800; letter-spacing:.05em;
+  padding:3px 8px; border-radius:999px; flex:0 0 auto;
+  background:var(--panel); border:1px solid var(--line-2); color:var(--muted);
+}
+.fav-toggle-bar.on .fav-toggle-state { border-color:var(--amber); color:var(--amber); }
+.label-actions { display:flex; flex-direction:column; gap:8px; margin-top:4px; }

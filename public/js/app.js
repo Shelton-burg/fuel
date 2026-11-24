@@ -27,7 +27,7 @@ let quickCache = []; // quick-add chips resolve their food via this (frequent + 
 let health = { tg: false, sync: false }; // server capabilities (/api/health) — read by Settings panels
 const isToday = () => selDate === S.dayKey();
 
-const APP_BUILD = 'v50';
+const APP_BUILD = 'v51';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -608,10 +608,14 @@ export function portionModal(food, edit = null) {
   const step = basis === '100g' ? 25 : 0.5;
   const confirmLabel = () => (editing ? 'Save changes' : 'Add to ' + MEAL_META[meal].label);
 
+  let isFav = !food.isRecipe && S.isFoodFav(food.name);
+  const favBtnHtml = food.isRecipe ? '' : `<button class="fav-pill${isFav ? ' on' : ''}" data-pfav type="button" aria-pressed="${isFav ? 'true' : 'false'}">${isFav ? '★ Saved' : '☆ Favourite'}</button>`;
+
   const { wrap, close } = openModal(`
     <div class="modal-head">
       <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
       <div class="modal-title">${editing ? 'Edit food' : 'Add food'}</div>
+      ${favBtnHtml}
     </div>
     <div class="portion-hero"><div class="portion-kcal" id="p-kcal">—</div></div>
     <div class="portion-name"><div class="n">${esc(food.name)}</div><div class="b">${esc(food.brand || (basis === '100g' ? 'per 100 g' : 'per serve'))}${basis === 'serve' && food.servingLabel ? ' · ' + esc(food.servingLabel) : ''}</div></div>
@@ -642,6 +646,18 @@ export function portionModal(food, edit = null) {
   recalc();
 
   wrap.addEventListener('click', (e) => {
+    const pfav = e.target.closest('[data-pfav]');
+    if (pfav) {
+      isFav = !isFav;
+      const fid = S.saveFood({ ...food, id: food.id, lastQty: qty }, { fav: isFav });
+      if (fid) food.id = fid;
+      pfav.classList.toggle('on', isFav);
+      pfav.setAttribute('aria-pressed', isFav ? 'true' : 'false');
+      pfav.textContent = isFav ? '★ Saved' : '☆ Favourite';
+      vib(8);
+      toast(isFav ? `${food.name} saved to Favourites ★` : `${food.name} removed from Favourites`);
+      return;
+    }
     if (e.target.closest('[data-minus]')) { qty = Math.max(step, +(qty - step).toFixed(2)); recalc(); vib(5); }
     if (e.target.closest('[data-plus]')) { qty = +(qty + step).toFixed(2); recalc(); vib(5); }
     const pre = e.target.closest('[data-preset]');
@@ -1029,11 +1045,20 @@ function labelConfirmModal(dataUrl, res) {
       <label class="field"><span>Fat (g)</span><input id="l-f" type="number" inputmode="decimal" value="${src.fat_g ?? ''}"></label>
     </div>
     <div class="field"><span>Serving size (optional)</span><input id="l-serving" value="${esc(res.serve_size_text || '')}" placeholder="e.g. 2 slices (78 g)"></div>
+    <button class="fav-toggle-bar on" data-lfav type="button" aria-pressed="true">
+      <span class="fav-toggle-star">★</span>
+      <span class="fav-toggle-txt"><b>Save to Favourites &amp; My Foods</b><small>So you never have to scan this label again</small></span>
+      <span class="fav-toggle-state">ON</span>
+    </button>
     <p class="nutri-note">${kjToKcal ? '⚡ Energy was shown in kJ — converted to kcal (÷ 4.184). ' : ''}${res.notes ? esc(res.notes) + ' ' : ''}Fix anything the AI misread, then continue.</p>
-    <button class="btn primary" data-next type="button">Looks right — next</button>
+    <div class="label-actions">
+      <button class="btn primary" data-next type="button">Save &amp; log food</button>
+      <button class="btn ghost" data-save-only type="button">★ Save to Favourites only</button>
+    </div>
   `);
 
   let selBasis = basis;
+  let saveToFavs = true;
   const get = (id) => $(id, wrap).value;
   const buildFood = () => {
     const serve = get('#l-serving');
@@ -1053,6 +1078,16 @@ function labelConfirmModal(dataUrl, res) {
   };
 
   wrap.addEventListener('click', (e) => {
+    const lfav = e.target.closest('[data-lfav]');
+    if (lfav) {
+      saveToFavs = !saveToFavs;
+      lfav.classList.toggle('on', saveToFavs);
+      lfav.setAttribute('aria-pressed', saveToFavs ? 'true' : 'false');
+      $('.fav-toggle-star', lfav).textContent = saveToFavs ? '★' : '☆';
+      $('.fav-toggle-state', lfav).textContent = saveToFavs ? 'ON' : 'OFF';
+      vib(6);
+      return;
+    }
     const b = e.target.closest('[data-basis]');
     if (b && b.dataset.basis !== selBasis) {
       // switch basis: fill from the other column if we have it
@@ -1067,12 +1102,21 @@ function labelConfirmModal(dataUrl, res) {
       $$('[data-basis]', wrap).forEach((x) => x.classList.toggle('sel', x === b));
       return;
     }
+    if (e.target.closest('[data-save-only]')) {
+      const food = buildFood();
+      if (!food.kcal) { toast('Energy value needed', 'i-x'); return; }
+      S.saveFood(food, { fav: true });
+      vib(12);
+      close();
+      toast(`${food.name} saved to Favourites & My Foods ★`);
+      return;
+    }
     if (e.target.closest('[data-next]')) {
       const food = buildFood();
       if (!food.kcal) { toast('Energy value needed', 'i-x'); return; }
-      const wasFav = S.isFoodFav(food.name);
-      S.saveFood(food);
-      if (!wasFav) toast('Saved to favourites ★');
+      const fid = S.saveFood(food, { fav: saveToFavs });
+      if (fid) food.id = fid;
+      if (saveToFavs) toast(`${food.name} saved to Favourites ★`);
       close();
       portionModal(food);
     }
