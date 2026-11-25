@@ -51,3 +51,28 @@ It works for 24 hours. If you didn't create a FUEL account, ignore this email.`;
   </div>`;
   return { text, html };
 }
+
+export function deleteEmail({ link }) {
+  const text = `Delete your FUEL account
+
+Open this link to permanently delete your FUEL account:
+
+${link}
+
+The link works for 60 minutes and can only be used once. Deleting is
+irreversible — your account, food and exercise history, photos and encrypted
+backups are destroyed.
+
+If you didn't ask for this, ignore this email — nothing will change.`;
+  const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0d0d0f;padding:32px;color:#f5f5f7">
+    <div style="max-width:440px;margin:0 auto;background:#16161a;border:1px solid #2a2a30;border-radius:16px;padding:28px">
+      <div style="letter-spacing:.3em;color:#ff9f1c;font-weight:700;font-size:12px">FUEL</div>
+      <h1 style="font-size:22px;margin:14px 0 8px">Delete your account</h1>
+      <p style="color:#a8a8b3;font-size:14px;line-height:1.5;margin:0 0 18px">Open this link to permanently delete your FUEL account. The link works for 60 minutes and can only be used once.</p>
+      <div style="margin:0 0 18px"><a href="${link}" style="display:inline-block;background:#b3261e;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:12px 20px;border-radius:10px">Delete my account</a></div>
+      <p style="color:#a8a8b3;font-size:13px;line-height:1.5;margin:0 0 8px"><b style="color:#f5f5f7">This cannot be undone.</b> Your account, food and exercise history, photos and encrypted backups are destroyed.</p>
+      <p style="color:#6f6f7b;font-size:12px;line-height:1.5;margin:0">If you didn't ask for this, ignore this email — nothing will change.</p>
+    </div>
+  </div>`;
+  return { text, html };
+}

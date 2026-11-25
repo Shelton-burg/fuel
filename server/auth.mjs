@@ -5,6 +5,7 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual, createHmac } from
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import * as db from './db.mjs';
 
 const GH = 'https://api.github.com';
 const TOKEN = process.env.GIST_TOKEN || null;
@@ -60,7 +61,7 @@ async function findGist() {
   return gistId;
 }
 
-async function readAll({ fresh = false } = {}) {
+async function readAllFromGist({ fresh = false } = {}) {
   if (!TOKEN) return mem;
   if (!fresh && memAt && Date.now() - memAt < CACHE_MS) return mem;
   if (Date.now() < blockedUntil && Object.keys(mem.users).length) return mem;
@@ -84,9 +85,41 @@ async function readAll({ fresh = false } = {}) {
   }
 }
 
+/** Read every account. Postgres when the db layer is active; otherwise the
+    gist path exactly as before. On first successful db connection the gist
+    accounts are lazily imported (once per uid, guarded by a migrated flag). */
+async function readAll({ fresh = false } = {}) {
+  if (db.active()) {
+    let users = await db.listUsers();
+    if (!db.migrationDone()) {
+      const gist = await readAllFromGist({ fresh: true });
+      for (const u of Object.values(gist.users)) {
+        try { await db.migrateUser(u); } catch (e) { console.error('[auth] migrate', u.id, e.message); }
+      }
+      db.markMigrationDone();
+      users = await db.listUsers();
+    }
+    const map = {};
+    for (const u of users) map[u.id] = u;
+    mem = { users: map };
+    memAt = Date.now();
+    return mem;
+  }
+  return readAllFromGist({ fresh });
+}
+
 async function writeAll(data) {
   mem = data;
   memAt = Date.now();
+  if (db.active()) {
+    try {
+      for (const u of Object.values(data.users)) await db.upsertUser(u);
+      saveDisk();
+      return;
+    } catch (e) {
+      console.error('[auth] db write failed — gist fallback:', e.message);
+    }
+  }
   saveDisk();
   if (!TOKEN) return;
   if (Date.now() < blockedUntil) { dirty = true; return; } // keep the change locally, sync later
@@ -208,6 +241,48 @@ export async function byId(id) {
   const data = await readAll();
   return data.users[id] || null;
 }
+
+/** single-user upsert — the db layer's gist-fallback path */
+export async function saveUser(user) {
+  const data = await readAll();
+  data.users[user.id] = user;
+  await writeAll(data);
+  return user;
+}
+
+/** Permanently remove an account (idempotent). Postgres row when the db layer
+    is active, otherwise the gist entry — never both, never neither. */
+export async function deleteAccount(uid) {
+  if (db.active()) {
+    try { await db.deleteUser(uid); return true; } catch (e) { console.error('[auth] db delete failed — gist fallback:', e.message); }
+  }
+  const data = await readAll({ fresh: true });
+  if (!data.users[uid]) return true;
+  delete data.users[uid];
+  await writeAll(data);
+  return true;
+}
+
+/** signed one-time token emailed for self-serve account deletion */
+export function makeDeleteToken(uid, ttlMs = 60 * 60 * 1000) {
+  const body = Buffer.from(JSON.stringify({ uid, purpose: 'delete', exp: Date.now() + ttlMs })).toString('base64url');
+  return `${body}.${sign(body)}`;
+}
+
+export function readDeleteToken(tok) {
+  try {
+    const [body, sig] = String(tok || '').split('.');
+    if (!body || !sig) return null;
+    const want = sign(body);
+    if (sig.length !== want.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return null;
+    const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (p.purpose !== 'delete' || !p.uid || !p.exp || p.exp < Date.now()) return null;
+    return p;
+  } catch { return null; }
+}
+
+/** test hook — read-only snapshot of the in-memory user map */
+export const __test = { users: () => ({ ...mem.users }) };
 
 /** counts only, no personal fields — for the owner dashboard (AU day keys, UTC+10). */
 export async function userStats() {

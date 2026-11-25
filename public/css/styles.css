@@ -238,6 +238,10 @@ svg.sm { width:14px; height:14px; }
 .link-btn { background:none; border:none; color:var(--amber); font-size:13.5px; font-weight:600; padding:6px 0; }
 .link-btn.inline { padding:0; }
 .link-btn.armed { color:#ff5c5c; }
+.link-btn.danger-text { color:#ff6b61; }
+.acc-legal { font-size:12.5px; }
+.acc-legal a { color:var(--amber); text-decoration:none; }
+.acc-legal a:active { opacity:.7; }
 
 .tcard .tc-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
 .tc-day { font-weight:700; font-size:15.5px; }

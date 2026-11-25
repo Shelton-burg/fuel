@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Delete your account · FUEL</title>
+<style>
+  :root { --bg:#07090F; --panel:#10151F; --line:#232a3a; --text:#f5f5f7; --muted:#8b93a7; --amber:#FFA117; --red:#b3261e; --red-soft:rgba(179,38,30,.15); }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
+  .wrap { max-width:520px; margin:0 auto; padding:28px 20px 56px; }
+  .brand { letter-spacing:.3em; color:var(--amber); font-weight:700; font-size:12px; margin-bottom:18px; }
+  h1 { font-size:24px; line-height:1.3; margin:0 0 10px; }
+  p { color:var(--muted); line-height:1.6; font-size:15px; margin:0 0 10px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; margin-top:16px; }
+  .warn { background:var(--red-soft); border:1px solid var(--red); border-radius:12px; padding:14px 16px; margin-top:14px; }
+  .warn p { color:#f0c5c2; font-size:14px; margin:0; line-height:1.55; }
+  .warn b { color:#ffdcd9; }
+  .btn { display:block; width:100%; text-align:center; background:var(--amber); color:#111; font-weight:700; border:0; border-radius:10px; padding:14px 22px; font-size:15px; text-decoration:none; cursor:pointer; margin-top:18px; }
+  .btn.ghost { background:transparent; color:var(--muted); border:1px solid var(--line); }
+  .btn.danger { background:var(--red); color:#fff; }
+  .done, .err { display:none; }
+  .done h1, .err h1 { font-size:22px; }
+  .err .btn { background:transparent; color:var(--amber); border:1px solid var(--line); }
+  a { color:var(--amber); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">FUEL</div>
+
+  <div id="confirm-view">
+    <h1>We're sorry to see you go</h1>
+    <p>This deletes your FUEL account and everything attached to it. Confirm below if that's what you want.</p>
+    <div class="warn">
+      <p><b>Deleting is permanent and cannot be undone.</b> Your account, food and exercise history, progress photos, goals and your encrypted backups are destroyed — including the automatic safety backup, which is deleted along with your account.</p>
+    </div>
+    <button class="btn danger" id="btn-confirm" type="button">Yes — delete my account forever</button>
+    <button class="btn ghost" id="btn-cancel" type="button">I changed my mind</button>
+  </div>
+
+  <div id="done-view" class="done">
+    <h1>Account deleted</h1>
+    <p>Your FUEL account and its data have been destroyed, including your encrypted backups. You can create a new account any time.</p>
+    <a class="btn" href="/">Back to FUEL</a>
+  </div>
+
+  <div id="err-view" class="err">
+    <h1>Could not delete your account</h1>
+    <p id="err-msg">This link is invalid, expired or already used. Request a fresh one from FUEL → Settings → Account → Delete my account.</p>
+    <a class="btn" href="/">Back to FUEL</a>
+  </div>
+</div>
+
+<script>
+(function () {
+  var qs = new URLSearchParams(location.search);
+  var token = qs.get('token') || '';
+  var show = function (id) {
+    ['confirm-view', 'done-view', 'err-view'].forEach(function (x) {
+      document.getElementById(x).style.display = x === id ? 'block' : 'none';
+    });
+  };
+  if (!token) { show('err-view'); return; }
+
+  document.getElementById('btn-cancel').addEventListener('click', function () { location.href = '/'; });
+  document.getElementById('btn-confirm').addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = 'Deleting…';
+    try {
+      var r = await fetch('/api/auth/delete-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ token: token }),
+      });
+      if (r.ok) { show('done-view'); return; }
+      if (r.status === 401) {
+        document.getElementById('err-msg').textContent =
+          "You're not signed in on this device. Open FUEL, sign in to this account, then open this link again — the link stays valid for 60 minutes.";
+      } else {
+        document.getElementById('err-msg').textContent =
+          'This link is invalid, expired or already used. Request a fresh one from FUEL → Settings → Account → Delete my account.';
+      }
+      show('err-view');
+    } catch (e) {
+      document.getElementById('err-msg').textContent = 'Something went wrong — please try again in a minute.';
+      show('err-view');
+      btn.disabled = false;
+      btn.textContent = 'Yes — delete my account forever';
+    }
+  });
+})();
+</script>
+</body>
+</html>

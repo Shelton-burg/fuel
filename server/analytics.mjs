@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import * as AUTH from './auth.mjs';
+import * as db from './db.mjs';
 
 const GH = 'https://api.github.com';
 const TOKEN = process.env.GIST_TOKEN || null;
@@ -38,12 +39,13 @@ const FLUSH_MS = 10 * 60 * 1000;          // flush buffered aggregates every 10 
 const FLUSH_EVENTS = 200;                 // …or as soon as 200 events pile up
 
 /* ── in-memory store ─────────────────────────────────────────────────── */
-let mem = { days: {} };      // days[dayKey][ev] = { c, u: [sha256(uid)] }
+let mem = { days: {} };      // days[dayKey][ev] = { c, u: [sha256(uid)], h: {hash: n} }
 let owner = null;            // { email, salt, hash, createdAt }
 let gistId = null;
 let blockedUntil = 0;
 let dirty = false;
 let buffered = 0;
+let dbBuffer = [];           // [{day, ev, h}] — pending postgres upserts (db-active mode)
 const lastAppOpen = new Map(); // sha256(uid) -> epoch ms
 const lastLoad = () => {
   try {
@@ -106,6 +108,8 @@ function mergeInto(dst, src) {
       const set = new Set(cur.u);
       for (const h of v.u || []) set.add(h);
       cur.u = [...set];
+      cur.h = cur.h || {};
+      for (const [hh, nn] of Object.entries(v.h || {})) cur.h[hh] = (cur.h[hh] || 0) + nn;
     }
   }
   return dst;
@@ -113,6 +117,20 @@ function mergeInto(dst, src) {
 
 /** merge the gist's latest aggregates into memory (used at boot and before each flush) */
 async function readAll() {
+  if (db.active()) {
+    try {
+      const rows = await db.analyticsRows();
+      for (const row of rows) {
+        const d = mem.days[row.day_key] || (mem.days[row.day_key] = {});
+        const cell = d[row.ev] || (d[row.ev] = { c: 0, u: [] });
+        cell.c += row.count;
+        if (!cell.u.includes(row.user_hash)) cell.u.push(row.user_hash);
+        cell.h = cell.h || {}; cell.h[row.user_hash] = (cell.h[row.user_hash] || 0) + row.count;
+      }
+      saveDisk();
+    } catch (e) { console.error('[analytics] db read failed:', e.message); }
+    return mem;
+  }
   if (!TOKEN) return mem;
   if (Date.now() < blockedUntil) return mem;
   try {
@@ -128,7 +146,25 @@ async function readAll() {
 }
 
 async function flush() {
-  if (!dirty && !buffered) return;
+  if (!dirty && !buffered && !dbBuffer.length) return;
+  if (db.active()) {
+    const events = dbBuffer.splice(0);
+    if (events.length) {
+      const agg = {};
+      for (const { day, ev, h } of events) {
+        const k = day + '\u0001' + ev + '\u0001' + h;
+        agg[k] = (agg[k] || 0) + 1;
+      }
+      for (const [k, n] of Object.entries(agg)) {
+        const [day, ev, h] = k.split('\u0001');
+        try { await db.recordAnalytics(day, ev, h, n); }
+        catch { for (let i = 0; i < n; i++) dbBuffer.push({ day, ev, h }); }
+      }
+    }
+    dirty = false; buffered = 0;
+    saveDisk();
+    return;
+  }
   if (!TOKEN) { buffered = 0; saveDisk(); return; }
   if (Date.now() < blockedUntil) { dirty = true; return; }
   try {
@@ -181,9 +217,51 @@ export function recordEvent(uid, ev, ts) {
   const cell = d[ev] || (d[ev] = { c: 0, u: [] });
   cell.c++;
   if (!cell.u.includes(h)) cell.u.push(h);
+  cell.h = cell.h || {};
+  cell.h[h] = (cell.h[h] || 0) + 1;
+  buffered++;
+  if (db.active()) dbBuffer.push({ day, ev, h });
+  if (buffered >= FLUSH_EVENTS) { buffered = 0; flush().catch(() => {}); }
+  return { ok: true };
+}
+
+/** db-layer fallback: fold a pre-aggregated count straight into the store */
+export function recordAggregate(dayKey, ev, userHash, n = 1) {
+  const d = mem.days[dayKey] || (mem.days[dayKey] = {});
+  const cell = d[ev] || (d[ev] = { c: 0, u: [] });
+  cell.c += n;
+  if (!cell.u.includes(userHash)) cell.u.push(userHash);
+  cell.h = cell.h || {};
+  cell.h[userHash] = (cell.h[userHash] || 0) + n;
   buffered++;
   if (buffered >= FLUSH_EVENTS) { buffered = 0; flush().catch(() => {}); }
   return { ok: true };
+}
+
+/** account deletion: remove this user's analytics everywhere.
+    Postgres rows are per-user (exact delete); the gist aggregate is purged
+    by hash — counts are corrected from the per-hash tallies kept in memory. */
+export async function purgeUserAnalytics(uid) {
+  const h = hashUser(uid);
+  if (db.active()) {
+    try { await db.deleteAnalyticsUser(h); return true; }
+    catch (e) { console.error('[analytics] db purge failed — memory fallback:', e.message); }
+  }
+  for (const [day, evs] of Object.entries(mem.days)) {
+    for (const [ev, cell] of Object.entries(evs || {})) {
+      if (!cell || !(cell.u || []).includes(h)) continue;
+      const n = (cell.h && cell.h[h]) || 0;
+      cell.c = Math.max(0, cell.c - n);
+      cell.u = (cell.u || []).filter((x) => x !== h);
+      if (cell.h) delete cell.h[h];
+      if (!cell.u.length) delete evs[ev];
+    }
+    if (!Object.keys(evs || {}).length) delete mem.days[day];
+  }
+  saveDisk();
+  dirty = true;
+  await flush();
+  return true;
 }
 
 /* ── owner account + session ─────────────────────────────────────────── */
@@ -355,4 +433,4 @@ export async function ownerStats({ fresh = false } = {}) {
 export function analyticsConfigured() { return true; }
 
 // test hooks (plain-node unit test only — not part of the HTTP surface)
-export const __test = { mergeDays: mergeInto, auDay };
+export const __test = { mergeDays: mergeInto, auDay, peekDays: () => JSON.parse(JSON.stringify(mem.days)) };

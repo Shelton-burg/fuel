@@ -45,7 +45,7 @@ let fastSelPreset = '16:8';
 let fastTimer = null;
 let foodCat = 'all'; // v59 — food section category filter
 
-const APP_BUILD = 'v61';
+const APP_BUILD = 'v62';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -2800,6 +2800,12 @@ function renderAccountPanel() {
     </details>
     <button class="link-btn" id="btn-new-recovery" type="button" style="display:block;margin-top:12px">Get a new recovery code</button>
     <div id="acc-newrec" class="sm" style="margin-top:8px"></div>
+    <button class="link-btn danger-text" id="btn-delete-account" type="button" style="display:block;margin-top:14px">Delete my account</button>
+    <div class="acc-legal" style="margin-top:18px;padding-top:12px;border-top:1px solid var(--line)">
+      <a href="/privacy" target="_blank" rel="noopener">Privacy policy</a>
+      <span class="muted" style="margin:0 6px">·</span>
+      <a href="/terms" target="_blank" rel="noopener">Terms of service</a>
+    </div>
     <button class="btn danger" id="btn-signout" type="button" style="margin-top:14px">Sign out</button>`;
 }
 document.addEventListener('click', async (e) => {
@@ -2858,6 +2864,18 @@ document.addEventListener('click', async (e) => {
       renderSettings();
       toast('Email verified ✓');
     } catch (ex) { toast(String(ex.message || ex).slice(0, 60), 'i-x'); }
+    return;
+  }
+  if (t.closest('#btn-delete-account')) {
+    const sure = confirm('Delete your FUEL account? Your data and encrypted backups will be permanently destroyed — this cannot be undone. We will email you a confirmation link.');
+    if (!sure) return;
+    try {
+      const r = await fetch('/api/auth/delete-account/request', { method: 'POST', credentials: 'same-origin' });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.mailed) toast('Check your email — we sent you a deletion link (valid for 60 minutes)');
+      else if (r.ok) toast('Could not email the link right now — try again in a minute', 'i-x');
+      else toast(j.message || 'Could not send the link right now', 'i-x');
+    } catch { toast('Could not send the link right now', 'i-x'); }
     return;
   }
   if (t.closest('#btn-signout')) {

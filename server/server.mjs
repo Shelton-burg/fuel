@@ -2,15 +2,16 @@
 import express from 'express';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { parseLabel, plateScan } from './label.mjs';
 import { coachAdvice, coachChat, weeklyReview, nutritionGaps, recipeIdeas } from './coach.mjs';
 import { mealPlan } from './mealplan.mjs';
-import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured } from './sync.mjs';
+import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured, deleteSlot } from './sync.mjs';
 import { sendTelegram, telegramConfigured } from './notify.mjs';
 import * as AUTH from './auth.mjs';
 import * as AN from './analytics.mjs';
-import { sendMail, resetEmail, verifyEmailMessage, mailConfigured } from './mail.mjs';
+import * as DB from './db.mjs';
+import { sendMail, resetEmail, verifyEmailMessage, deleteEmail, mailConfigured } from './mail.mjs';
 
 AN.installShutdownHook();
 
@@ -39,8 +40,39 @@ const DEEPSEEK_KEY = loadKey('DEEPSEEK_API_KEY');
 const KEYS = { deepseek: DEEPSEEK_KEY, gemini: GEMINI_KEY };
 const hasCoach = !!(DEEPSEEK_KEY || GEMINI_KEY);
 
-const app = express();
+export const app = express();
 app.use(express.json({ limit: '6mb' }));
+/* ── public legal pages + account-deletion link ──────────────────────────
+   Registered BEFORE express.static so the /delete-account token check wins
+   over the static `extensions: ['html']` lookup. */
+const pageShell = (title, bodyHtml) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title} · FUEL</title>
+<style>
+  :root { --bg:#07090F; --panel:#10151F; --line:#232a3a; --text:#f5f5f7; --muted:#8b93a7; --amber:#FFA117; --red:#b3261e; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
+  .wrap { max-width:520px; margin:0 auto; padding:28px 20px 56px; }
+  .brand { letter-spacing:.3em; color:var(--amber); font-weight:700; font-size:12px; margin-bottom:16px; }
+  h1 { font-size:24px; line-height:1.3; margin:0 0 12px; }
+  p { color:var(--muted); line-height:1.6; font-size:15px; margin:0 0 10px; }
+  a { color:var(--amber); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; margin-top:14px; }
+  .btn { display:inline-block; background:var(--amber); color:#111; font-weight:700; border:0; border-radius:10px; padding:12px 22px; font-size:15px; text-decoration:none; cursor:pointer; }
+</style></head><body><div class="wrap"><div class="brand">FUEL</div>${bodyHtml}</div></body></html>`;
+
+app.get('/privacy', (req, res) => res.sendFile(join(__dirname, '..', 'public', 'privacy.html')));
+app.get('/terms', (req, res) => res.sendFile(join(__dirname, '..', 'public', 'terms.html')));
+
+app.get('/delete-account', (req, res) => {
+  const tok = AUTH.readDeleteToken(req.query.token);
+  if (!tok) {
+    return res.status(400).send(pageShell('Link expired or invalid',
+      `<h1>Link expired or invalid</h1><p>That deletion link is missing, expired or has already been used. To delete your account, open FUEL → Settings → Account → <b>Delete my account</b>, and we'll email you a fresh link.</p>`));
+  }
+  res.sendFile(join(__dirname, '..', 'public', 'delete-account.html'));
+});
+
 app.use(express.static(join(__dirname, '..', 'public'), { extensions: ['html'] }));
 
 
@@ -84,6 +116,7 @@ app.get('/api/health', (req, res) => res.json({
   ai: !!GEMINI_KEY, coach: hasCoach, coachProvider: DEEPSEEK_KEY ? 'deepseek' : GEMINI_KEY ? 'gemini' : null,
   sync: syncConfigured(), tg: telegramConfigured(), ab: autoConfigured(), auth: true,
   an: AN.analyticsConfigured(), owner: !!process.env.FUEL_OWNER_SETUP_CODE,
+  db: DB.active(),
 }));
 
 app.post('/api/parse-label', AUTH.requireUser, AUTH.aiBudget('label', 80), async (req, res) => {
@@ -437,6 +470,46 @@ app.post('/api/auth/recovery', AUTH.requireUser, async (req, res) => {
   }
 });
 
+/* ── self-serve account deletion (Google Play requirement) ──────────────
+   In-app: POST request → signed one-time token emailed via Resend.
+   Email link: GET /delete-account?token=… → confirm page.
+   Confirm: POST /api/auth/delete-account (must be signed in AND hold the
+   token for the SAME account) → wipes the user, the sync blob, the automatic
+   backup and every analytics row (gist entries too in fallback mode). */
+const deleteReqLimiter = AUTH.rateLimit('delete-req', 5, 60 * 60 * 1000);
+const deleteLimiter = AUTH.rateLimit('delete', 10, 60 * 60 * 1000);
+
+app.post('/api/auth/delete-account/request', AUTH.requireUser, deleteReqLimiter, async (req, res) => {
+  try {
+    const token = AUTH.makeDeleteToken(req.user.id);
+    const base = process.env.FUEL_BASE_URL || `https://${req.get('host')}`;
+    const link = `${base}/delete-account?token=${encodeURIComponent(token)}`;
+    const { text, html } = deleteEmail({ link });
+    const sent = await sendMail({ to: req.user.email, subject: 'Delete your FUEL account', text, html });
+    res.json({ ok: true, mailed: !!sent.ok, mailConfigured: mailConfigured() });
+  } catch (e) {
+    console.error('[delete-request]', e.detail || e.message);
+    res.status(502).json({ error: 'delete_request_failed', message: 'Could not send the link right now — try again in a minute.' });
+  }
+});
+
+app.post('/api/auth/delete-account', AUTH.requireUser, deleteLimiter, async (req, res) => {
+  const tok = AUTH.readDeleteToken(req.body?.token);
+  if (!tok || tok.uid !== req.user.id) {
+    return res.status(400).json({ error: 'bad_token', message: 'That link is invalid or has expired — request a new one from Settings.' });
+  }
+  try {
+    await AUTH.deleteAccount(req.user.id);      // user record (postgres row or gist entry)
+    await deleteSlot(req.user.slot);            // client-encrypted sync blob + automatic backup
+    await AN.purgeUserAnalytics(req.user.id);   // every analytics row for this account
+    res.setHeader('Set-Cookie', AUTH.clearCookie());
+    res.json({ ok: true, deleted: true });
+  } catch (e) {
+    console.error('[delete-account]', e.detail || e.message);
+    res.status(502).json({ error: 'delete_failed', message: 'Could not delete the account right now — try again.' });
+  }
+});
+
 const slotOf = (req) => req.user?.slot || null; // accounts only — a client-supplied slot is ignored
 
 app.get('/api/sync/state', AUTH.requireUser, async (req, res) => {
@@ -515,6 +588,11 @@ app.post('/api/notify', AUTH.requireUser, async (req, res) => {
   } catch (e) { console.error('[notify]', e.detail || e.message); res.status(502).json({ error: 'notify_failed', message: 'Message could not be sent.' }); }
 });
 
-app.listen(PORT, () => {
-  console.log(`FUEL listening on :${PORT} | ai:${GEMINI_KEY ? 'on' : 'off'}`);
-});
+// run as a server only when executed directly (node server/server.mjs) —
+// imported modules (unit tests) get the express app without binding a port
+const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  app.listen(PORT, () => {
+    console.log(`FUEL listening on :${PORT} | ai:${GEMINI_KEY ? 'on' : 'off'} | db:${DB.active() ? 'on' : 'off'}`);
+  });
+}

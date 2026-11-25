@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy · FUEL</title>
+<style>
+  :root { --bg:#07090F; --panel:#10151F; --line:#232a3a; --text:#f5f5f7; --muted:#8b93a7; --amber:#FFA117; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
+  .wrap { max-width:640px; margin:0 auto; padding:28px 20px 64px; }
+  .brand { letter-spacing:.3em; color:var(--amber); font-weight:700; font-size:12px; margin-bottom:16px; }
+  h1 { font-size:26px; margin:0 0 6px; }
+  h2 { font-size:18px; margin:26px 0 8px; color:var(--amber); }
+  p, li { color:var(--muted); line-height:1.65; font-size:15px; }
+  a { color:var(--amber); }
+  .updated { font-size:13px; color:var(--muted); margin-bottom:18px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin:18px 0; }
+  .card p { margin:0 0 8px; }
+  .card p:last-child { margin:0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">FUEL</div>
+  <h1>Privacy policy</h1>
+  <p class="updated">Last updated: 26 November 2026</p>
+
+  <p>FUEL is a calorie, macro and training tracker. This policy explains, in plain English, what data FUEL handles, where it lives and what you can do about it.</p>
+
+  <h2>Who runs FUEL</h2>
+  <p>FUEL is operated by Shelton Allenberg, Queensland, Australia. Privacy questions: <a href="mailto:shelton@allplumbandgas.com.au">shelton@allplumbandgas.com.au</a>.</p>
+
+  <h2>What we collect</h2>
+  <ul>
+    <li><b>Your account</b> — your name, email address and a password (stored only as a one-way salted hash, never as plain text).</li>
+    <li><b>Your food, weight, workout and goals data</b> — everything you log in the app is <b>encrypted on your device before it leaves it</b>. The FUEL server only ever stores that encrypted copy (ciphertext) and cannot read its contents.</li>
+    <li><b>Anonymous usage counts</b> — the app reports only feature names (for example "food logged", "workout started") with no content. The server stores aggregate counts keyed by a one-way hash of your account id — never your email, never what you ate, never your numbers.</li>
+  </ul>
+
+  <div class="card">
+    <p><b>In one sentence:</b> the server can see your email address and aggregate event counts. It cannot see your food, your weight, your workouts or your photos — those are encrypted on your device, and the server stores only ciphertext it has no key for.</p>
+  </div>
+
+  <h2>AI features</h2>
+  <p>Two AI features process data outside FUEL's servers, and we say so plainly:</p>
+  <ul>
+    <li><b>Label photo scanning</b> — when you photograph a nutrition label, the photo is sent to <b>Google Gemini</b> so the printed numbers can be read. Only the photo is sent.</li>
+    <li><b>AI coach, weekly check-in, meal planner and recipe ideas</b> — these send summary context about your logged food and training (not your photos, not your name or email) to <b>DeepSeek</b> so it can answer. Numbers are computed on your device; the AI only picks and explains.</li>
+  </ul>
+  <p>Don't want that? AI features are optional — you can log food by search, barcode or typing, and never touch the coach.</p>
+
+  <h2>What we don't do</h2>
+  <ul>
+    <li><b>No ads.</b> FUEL shows no advertising and has no ad trackers.</li>
+    <li><b>No selling data.</b> We do not sell, rent or trade your personal data, ever.</li>
+    <li><b>No third-party tracking.</b> No analytics SDKs, no marketing pixels.</li>
+  </ul>
+
+  <h2>Your rights — delete everything, any time</h2>
+  <p>You can delete your entire account yourself, any time: Settings → Account → <b>Delete my account</b>. We email you a confirmation link; once you confirm, your account, your encrypted backups and all analytics tied to you are destroyed. Deletion is permanent and irreversible — the encrypted backup is destroyed with the account, so there is no way to recover the data afterwards.</p>
+  <p>You can also ask us directly at <a href="mailto:shelton@allplumbandgas.com.au">shelton@allplumbandgas.com.au</a> and we will delete your account for you.</p>
+
+  <h2>Australian law</h2>
+  <p>FUEL follows the Australian Privacy Act 1988 (Cth) and the Australian Privacy Principles. This is an Australian-operated service; if you are elsewhere, your local privacy law may also apply.</p>
+
+  <h2>Where data is stored</h2>
+  <p>FUEL runs on servers hosted by Render (Singapore region) and GitHub gists (private). Your data is encrypted on your device before it reaches either. If you have questions about anything in this policy, email <a href="mailto:shelton@allplumbandgas.com.au">shelton@allplumbandgas.com.au</a>.</p>
+</div>
+</body>
+</html>

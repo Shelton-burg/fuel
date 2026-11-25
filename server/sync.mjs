@@ -4,6 +4,7 @@
 // device from silently overwriting the slot.
 
 import { createHash, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import * as db from './db.mjs';
 
 const GH = 'https://api.github.com';
 const TOKEN = process.env.GIST_TOKEN || null;
@@ -31,6 +32,19 @@ async function gh(method, path, body) {
   return r.json();
 }
 
+async function ghDel(path) { // DELETE returns 204 with no body — r.json() would throw
+  const r = await fetch(GH + path, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${TOKEN}`, Accept: 'application/vnd.github+json', 'User-Agent': 'fuel-sync' },
+  });
+  if (!r.ok && r.status !== 404) {
+    const e = new Error('gist_http_' + r.status);
+    e.detail = (await r.text()).replace(/\s+/g, ' ').slice(0, 200);
+    throw e;
+  }
+  return true;
+}
+
 async function findGist(slot) {
   if (gistCache.has(slot)) return gistCache.get(slot);
   const desc = descFor(slot);
@@ -49,7 +63,14 @@ async function findGist(slot) {
 // end-to-end — never touches the real gist.
 const mem = new Map();
 
+// account slot -> db key: postgres rows are keyed by the account uid
+const uidKey = (slot) => (String(slot || '').startsWith('acct-') ? String(slot).slice(5) : String(slot || DEFAULT_SLOT));
+
 export async function readSync(slot = DEFAULT_SLOT) {
+  if (db.active()) {
+    const rec = await db.getBlob(uidKey(slot));
+    return rec ? { blob: rec.payload, keyHash: rec.keyHash, updatedAt: rec.updatedAt } : { blob: null, keyHash: null, updatedAt: null };
+  }
   if (!TOKEN) return mem.get(slot) || { blob: null, keyHash: null, updatedAt: null };
   const id = await findGist(slot);
   const g = await gh('GET', `/gists/${id}`);
@@ -63,6 +84,12 @@ export async function readSync(slot = DEFAULT_SLOT) {
 }
 
 export async function writeSync(blob, keyHash, slot = DEFAULT_SLOT) {
+  if (db.active()) {
+    const cur = await db.getBlob(uidKey(slot));
+    if (cur && cur.keyHash && cur.keyHash !== keyHash) { const e = new Error('key_mismatch'); throw e; }
+    const out = await db.putBlob(uidKey(slot), { payload: blob, keyHash, updatedAt: Date.now() });
+    return { updatedAt: out.updatedAt };
+  }
   if (!TOKEN) {
     const cur = mem.get(slot) || {};
     if (cur.keyHash && cur.keyHash !== keyHash) { const e = new Error('key_mismatch'); throw e; }
@@ -104,6 +131,12 @@ function autoDecrypt(env) {
 }
 
 export async function readAuto(slot = DEFAULT_SLOT) {
+  if (db.active()) {
+    const env = await db.getAuto(uidKey(slot));
+    if (!env) return null;
+    try { return { state: autoDecrypt(env), updatedAt: env.u || null }; }
+    catch (e) { console.error('[autobak-read]', e.message); return null; }
+  }
   if (!TOKEN) return autoCache.get(slot) || null;
   const id = await findGist(slot);
   const g = await gh('GET', `/gists/${id}`);
@@ -120,6 +153,12 @@ export async function readAuto(slot = DEFAULT_SLOT) {
 
 export async function writeAuto(state, slot = DEFAULT_SLOT) {
   const updatedAt = Date.now();
+  if (db.active()) {
+    const env = autoEncrypt(state);
+    env.u = updatedAt;
+    await db.putAuto(uidKey(slot), env);
+    return { updatedAt };
+  }
   if (!TOKEN) { autoCache.set(slot, { state, updatedAt }); return { updatedAt }; }
   const env = autoEncrypt(state);
   env.u = updatedAt;
@@ -128,3 +167,40 @@ export async function writeAuto(state, slot = DEFAULT_SLOT) {
   return { updatedAt };
 }
 export function autoConfigured() { return true; }
+
+/* ── account deletion ────────────────────────────────────────────────────
+   Wipes EVERYTHING this account holds server-side: the client-encrypted sync
+   blob AND the automatic safety backup. Postgres rows when the db layer is
+   active; in gist mode the whole slot gist is deleted (both files live in it). */
+export async function deleteSlot(slot = DEFAULT_SLOT) {
+  if (db.active()) {
+    await db.deleteBlob(uidKey(slot));
+    await db.deleteAuto(uidKey(slot));
+    return true;
+  }
+  if (!TOKEN) { mem.delete(slot); autoCache.delete(slot); return true; }
+  const id = gistCache.get(slot);
+  if (id) {
+    await ghDel(`/gists/${id}`);
+    gistCache.delete(slot);
+  }
+  return true;
+}
+
+/* ── pre-encrypted envelope passthrough (db layer's gist fallback) ─────── */
+export async function putAutoEnv(slot = DEFAULT_SLOT, env) {
+  const updatedAt = env.u || Date.now();
+  if (!TOKEN) { autoCache.set(slot, { state: autoDecrypt(env), updatedAt }); return { updatedAt }; }
+  env.u = updatedAt;
+  const id = await findGist(slot);
+  await gh('PATCH', `/gists/${id}`, { files: { [AUTO_FILE]: { content: JSON.stringify(env) } } });
+  return { updatedAt };
+}
+
+export async function getAutoEnv(slot = DEFAULT_SLOT) {
+  const s = await readAuto(slot);
+  if (!s || !s.state) return null;
+  const env = autoEncrypt(s.state); // re-encapsulate losslessly
+  env.u = s.updatedAt || Date.now();
+  return env;
+}

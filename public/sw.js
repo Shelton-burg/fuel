@@ -1,5 +1,5 @@
 // FUEL service worker — shell cache-first, API network-only.
-const CACHE = 'fuel-v61';
+const CACHE = 'fuel-v62';
 const SHELL = ['./', 'index.html', 'css/styles.css', 'js/plains.js',
   'js/app.js', 'js/boot.js', 'js/store.js', 'js/off.js', 'js/charts.js', 'js/programs.js', 'js/train.js', 'js/sync.js', 'js/photos.js', 'js/autobak.js', 'js/recipes.js', 'js/analytics.js', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
 
@@ -14,8 +14,8 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  if (url.pathname.startsWith('/api/') || url.pathname === '/owner' || url.pathname === '/owner.html' || url.pathname === '/js/owner.js' || url.hostname === 'world.openfoodfacts.org' || url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    return; // network handles these (the owner dashboard must never be served stale)
+  if (url.pathname.startsWith('/api/') || url.pathname === '/owner' || url.pathname === '/owner.html' || url.pathname === '/js/owner.js' || url.pathname === '/delete-account' || url.pathname === '/privacy' || url.pathname === '/terms' || url.hostname === 'world.openfoodfacts.org' || url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
+    return; // network handles these (the owner dashboard and legal pages must never be served stale)
   }
   if (url.origin === location.origin) {
     e.respondWith(
