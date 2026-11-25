@@ -1,4 +1,5 @@
 // FUEL — boot gate. Loads the app only after the session (and PIN) checks out.
+import { fireEvent } from './analytics.js';
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -276,7 +277,7 @@ function pinScreen(user) {
     if (pin.length < 4) return;
     err.hidden = true;
     const r = await fetch('/api/auth/pin/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ pin }) });
-    if (r.ok) { window.__fuelUser = user; if (!user.emailVerified) return verifyScreen(user, false); start(); }
+    if (r.ok) { fireEvent('pin_used'); window.__fuelUser = user; if (!user.emailVerified) return verifyScreen(user, false); start(); }
     else if (pin.length === 6) { err.textContent = 'That PIN is wrong.'; err.hidden = false; pin = ''; paint(); }
   });
 }

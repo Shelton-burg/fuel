@@ -9,7 +9,10 @@ import { mealPlan } from './mealplan.mjs';
 import { readSync, writeSync, syncConfigured, readAuto, writeAuto, autoConfigured } from './sync.mjs';
 import { sendTelegram, telegramConfigured } from './notify.mjs';
 import * as AUTH from './auth.mjs';
+import * as AN from './analytics.mjs';
 import { sendMail, resetEmail, verifyEmailMessage, mailConfigured } from './mail.mjs';
+
+AN.installShutdownHook();
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 4170;
@@ -80,6 +83,7 @@ app.get('/api/health', (req, res) => res.json({
   ok: true, build: (process.env.RENDER_GIT_COMMIT || '').slice(0, 7) || null,
   ai: !!GEMINI_KEY, coach: hasCoach, coachProvider: DEEPSEEK_KEY ? 'deepseek' : GEMINI_KEY ? 'gemini' : null,
   sync: syncConfigured(), tg: telegramConfigured(), ab: autoConfigured(), auth: true,
+  an: AN.analyticsConfigured(), owner: !!process.env.FUEL_OWNER_SETUP_CODE,
 }));
 
 app.post('/api/parse-label', AUTH.requireUser, AUTH.aiBudget('label', 80), async (req, res) => {
@@ -212,6 +216,76 @@ app.post('/api/weekly', AUTH.requireUser, AUTH.aiBudget('weekly', 10), async (re
   } catch (e) {
     console.error('[weekly]', e.detail || e.message);
     res.status(502).json({ error: 'weekly_failed', message: 'The check-in is unavailable right now — try again in a minute.' });
+  }
+});
+
+/* ── privacy-safe analytics + owner dashboard ───────────────────────────
+   The client sends allowlisted event NAMES only (feature usage, never content).
+   The server aggregates {day, event, sha256(uid)} in memory and flushes to a
+   private gist. The owner sign-in is separate from user accounts. */
+app.post('/api/analytics/event', AUTH.requireUser, (req, res) => {
+  const { ev, ts } = req.body || {};
+  if (typeof ev !== 'string' || !AN.ALLOWED.has(ev)) return res.status(400).json({ error: 'bad_event' });
+  try {
+    AN.recordEvent(req.user.id, ev, ts);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(e.status || 400).json({ error: 'bad_event' });
+  }
+});
+
+app.get('/owner', (req, res) => res.sendFile(join(__dirname, '..', 'public', 'owner.html')));
+
+const ownerLimiter = AUTH.rateLimit('owner-login', 10, 15 * 60 * 1000);
+const ownerSetupLimiter = AUTH.rateLimit('owner-setup', 10, 15 * 60 * 1000);
+
+app.post('/api/owner/setup', ownerSetupLimiter, async (req, res) => {
+  try {
+    const o = await AN.ownerSetup(req.body || {});
+    res.setHeader('Set-Cookie', AN.ownerCookieHeader());
+    res.json({ ok: true, owner: { email: o.email, createdAt: o.createdAt } });
+  } catch (e) {
+    const map = {
+      bad_code: ['That setup code is wrong.', 403],
+      already_setup: ['The owner account already exists — sign in instead.', 409],
+      not_configured: ['Owner setup is not enabled on this server yet.', 503],
+      weak_password: ['Use at least 8 characters.', 400],
+      bad_email: ['That email doesn’t look right.', 400],
+    };
+    const [message, status] = map[e.message] || ['Could not set up the owner account.', 502];
+    if (!map[e.message]) console.error('[owner-setup]', e.detail || e.message);
+    res.status(status).json({ error: e.message || 'setup_failed', message });
+  }
+});
+
+app.post('/api/owner/login', ownerLimiter, async (req, res) => {
+  try {
+    await AN.ownerLogin(req.body || {});
+    res.setHeader('Set-Cookie', AN.ownerCookieHeader());
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(401).json({ error: 'bad_login', message: 'Email or password is wrong.' });
+  }
+});
+
+app.post('/api/owner/logout', (req, res) => {
+  res.setHeader('Set-Cookie', AN.clearOwnerCookie());
+  res.json({ ok: true });
+});
+
+app.get('/api/owner/me', (req, res) => {
+  const t = AN.readOwnerToken(AUTH.parseCookies(req)[AN.OWNER_COOKIE]);
+  if (!t) return res.status(401).json({ error: 'owner_required' });
+  res.json({ ok: true, owner: { email: AN.ownerEmail() } });
+});
+
+app.get('/api/owner/stats', AN.requireOwner, async (req, res) => {
+  try {
+    const s = await AN.ownerStats();
+    res.json({ ok: true, ...s });
+  } catch (e) {
+    console.error('[owner-stats]', e.detail || e.message);
+    res.status(502).json({ error: 'stats_failed', message: 'Could not load the dashboard right now.' });
   }
 });
 

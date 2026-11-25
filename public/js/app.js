@@ -7,6 +7,7 @@ import * as SY from './sync.js';
 import { dayIdFor, PROGRAMS, PROGRAM_LIST, EX_LIB, exGroup } from './programs.js';
 import * as ABK from './autobak.js';
 import { FUEL_RECIPES } from './recipes.js';
+import { fireEvent } from './analytics.js';
 
 const $ = (q, r = document) => r.querySelector(q);
 const $$ = (q, r = document) => [...r.querySelectorAll(q)];
@@ -44,7 +45,7 @@ let fastSelPreset = '16:8';
 let fastTimer = null;
 let foodCat = 'all'; // v59 — food section category filter
 
-const APP_BUILD = 'v60';
+const APP_BUILD = 'v61';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -70,6 +71,7 @@ ABK.bindState(() => S.getState());
 ABK.boot({ demo: DEMO })
   .then((r) => {
     renderAll();
+    fireEvent('app_open'); // privacy-safe usage event — name only
     if (r && r.restoredFrom === 'cloud') toast('Welcome back — your data was restored from backup');
     else if (r && r.restoredFrom === 'device') toast('Data restored from this device\'s backup');
   })
@@ -241,6 +243,9 @@ function switchView(v) {
   $$('.view').forEach((s) => s.classList.toggle('active', s.id === 'view-' + v));
   $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
   vib(6);
+  // privacy-safe usage event — tab names only (goals lives under Settings)
+  const TAB_EV = { today: 'tab_today', train: 'tab_train', history: 'tab_history', recovery: 'tab_recovery', food: 'tab_food', settings: 'tab_settings', goals: 'tab_settings' };
+  if (TAB_EV[v]) fireEvent(TAB_EV[v]);
   if (v === 'history') { renderHistory(); renderConsistency(); }
   if (v === 'settings') renderSettings();
   if (v === 'today') { renderWeek(); renderRecoveryChip(); }
@@ -728,6 +733,7 @@ function recipeModal() {
       if (!r.ok || !j.ok || !j.result) throw new Error(j.message || 'Recipe engine failed');
       recipeResults = j.result.recipes || [];
       if (!recipeResults.length) throw new Error('No recipes came back — try different ingredients');
+      fireEvent('recipe_ideas');
       out.innerHTML = recipeResults.map((rec, i) => `
         <div class="rc-recipe">
           <div class="rc-r-head"><b>${esc(rec.title)}</b><span class="muted sm">serves ${rec.serves} · ${rec.kcal} kcal</span></div>
@@ -755,6 +761,7 @@ function recipeModal() {
     if (!rec) return;
     const meal = wrap.querySelector(`[data-rc-meal="${i}"]`)?.value || 'dinner';
     S.addEntry(meal, { name: rec.title, kcal: rec.kcal, p: rec.p, c: rec.c, f: rec.f });
+    fireEvent('log_food');
     b.textContent = 'Logged ✓';
     b.disabled = true;
     vib(8);
@@ -815,6 +822,7 @@ function foodRecipeModal(r) {
   wrap.querySelector('#fr-log').addEventListener('click', () => {
     const meal = wrap.querySelector('#fr-meal').value;
     S.addEntry(meal, { name: r.name, kcal: r.kcal, p: r.p, c: r.c, f: r.f, qtyLabel: '1 serve' }, selDate);
+    fireEvent('log_food');
     vib(8);
     toast(`${r.name} logged to ${meal}`);
     wrap.remove();
@@ -1178,6 +1186,7 @@ export function portionModal(food, edit = null) {
         if (moved) toast(`${food.name} updated — ${fmt(entry.kcal)} kcal${isToday() ? '' : ` · ${S.fmtDate(selDate)}`}`);
       } else {
         S.addEntry(meal, entry, selDate);
+        fireEvent('log_food');
         close();
         renderToday();
         toast(`${food.name} added — ${fmt(entry.kcal)} kcal${isToday() ? '' : ` · ${S.fmtDate(selDate)}`}`);
@@ -1332,6 +1341,7 @@ function searchModal() {
     if (!r) return;
     if (r.act === 'quick') {
       S.addEntry(mealForNow(), { name: r.f.name, kcal: r.f.kcal, p: r.f.p || 0, c: r.f.c || 0, f: r.f.f || 0, qtyLabel: r.f.qtyLabel || '', basis: r.f.basis || null, qty: r.f.qty ?? null, per: r.f.per || null }, selDate);
+      fireEvent('log_food');
       wrap.remove();
       vib(10);
       renderToday();
@@ -1404,6 +1414,7 @@ async function scanBarcode() {
         if (!f || f.noNutrition) { barcodeNotFoundModal(code, f); return; }
         // save the moment the barcode resolves — it lands in My foods even if he backs out
         { const fid = S.saveFood(f); if (fid) f.id = fid; }
+        fireEvent('scan_barcode');
         portionModal(f);
         return;
       }
@@ -1472,6 +1483,7 @@ function plateReviewModal(dataUrl) {
       const res = j.result;
       if (!res.found || !res.items.length) throw new Error('no_food');
       plateConfirmModal(dataUrl, res);
+      fireEvent('plate_scan');
       close();
     })
     .catch((e) => {
@@ -1578,6 +1590,7 @@ function labelReviewModal(dataUrl) {
       const res = j.result;
       if (!res.found) throw new Error('no_panel');
       labelConfirmModal(dataUrl, res);
+      fireEvent('scan_label');
       close();
     })
     .catch((e) => {
@@ -2286,6 +2299,7 @@ async function askCoach() {
     if (!r.ok || !j.ok) throw new Error(j.message || 'The coach is unavailable right now. Try again in a minute.');
     S.setSetting('coachPlanError', null);
     S.setSetting('coachPlan', { ts: Date.now(), result: j.result, basisDays: payload.intake.daysLogged });
+    fireEvent('coach_call');
     toast('Coach plan ready');
   } catch (e) {
     S.setSetting('coachPlanError', String(e.message || e).slice(0, 200));
@@ -2394,6 +2408,7 @@ async function runWeekly(silent) {
     if (!r.ok || !j.ok) throw new Error(j.message || 'The check-in is unavailable right now — try again in a minute.');
     S.setSetting('weeklyError', null);
     S.setSetting('weeklyReview', { ts: Date.now(), result: j.result });
+    fireEvent('weekly_checkin');
     maybeSendDigest(j.result);
     if (!silent) toast('Weekly check-in ready');
   } catch (e) {
@@ -2504,6 +2519,7 @@ async function runMealPlan(mode) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) throw new Error(j.message || 'The meal planner is unavailable right now — try again in a minute.');
     S.setSetting('mealPlan', { ts: Date.now(), mode, result: j.result, added: [] });
+    fireEvent('mealplan');
     toast('Meal plan ready');
   } catch (e) {
     toast(String(e.message || e).slice(0, 80), 'i-x');
@@ -3646,6 +3662,7 @@ async function coachSend(text) {
     if (!r.ok || !j.ok) throw new Error(j.message || 'The coach could not answer just now.');
     const res = j.result;
     saveCoachThread(thread.concat([{ role: 'coach', text: res.text, ev: res.evidence, act: res.actions, fu: res.followups, ts: Date.now() }]));
+    fireEvent('coach_chat_msg');
   } catch (e) {
     saveCoachThread(thread.concat([{ role: 'coach', text: `I couldn't answer that just now — ${String(e.message || e).slice(0, 80)}`, ev: [], act: [], fu: [] }]));
     toast('Coach unavailable — try again', 'i-x');
@@ -3831,6 +3848,7 @@ function checkinModal() {
       if (isFinite(kg) && kg >= 30 && kg <= 300) { S.logWeight(key, Math.round(kg * 10) / 10); wroteKg = true; }
       const saved = S.logCheckin(key, { ...ratings, note: wrap.querySelector('#ci-note').value });
       if (!saved && !wroteKg && !ml) { toast('Log a weight, water or how you feel first'); return; }
+      fireEvent('checkin_log');
       wrap.remove();
       vib(14);
       const rdy = S.readiness(S.getCheckin(key));
@@ -3880,6 +3898,7 @@ function barcodeEntryModal() {
       status.hidden = true;
       if (!f || f.noNutrition) { wrap.remove(); barcodeNotFoundModal(code, f); return; }
       { const fid = S.saveFood(f); if (fid) f.id = fid; }
+      fireEvent('scan_barcode');
       wrap.remove();
       portionModal(f);
     } catch (e) {

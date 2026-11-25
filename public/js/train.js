@@ -6,6 +6,7 @@ import * as S from './store.js';
 import { PROGRAMS, PROGRAM_LIST, dayIdFor, nextDayIdFor, EX_LIB, exGroup, exMeta } from './programs.js';
 import * as CH from './charts.js';
 import { photoPanelHTML, renderPhotoStrip } from './photos.js';
+import { fireEvent } from './analytics.js';
 
 const K = () => S.dayKey();
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -161,6 +162,7 @@ function startSession(dayId) {
   const p = program(); if (!p) return;
   const s = buildSession(p, dayId);
   S.putSession(K(), s);
+  fireEvent('workout_start');
   ensureAudio(); vib(10); keepAwake(true);
   ui.mode = 'auto'; renderTrain(); startTicker();
   onTick();
@@ -211,6 +213,7 @@ function finishSession() {
   const s = todaySession(); if (!s) return;
   s.finishedAt = Date.now(); s.timer = null;
   S.putSession(K(), s);
+  fireEvent('workout_finish');
   keepAwake(false); vib([30, 60, 30]);
   const bar = document.getElementById('restbar'); if (bar) bar.hidden = true;
   ui.mode = 'auto'; ui.justFinished = true;

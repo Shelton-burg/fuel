@@ -209,6 +209,19 @@ export async function byId(id) {
   return data.users[id] || null;
 }
 
+/** counts only, no personal fields — for the owner dashboard (AU day keys, UTC+10). */
+export async function userStats() {
+  const data = await readAll();
+  const byDay = {};
+  let total = 0;
+  for (const u of Object.values(data.users)) {
+    total++;
+    const d = new Date((u.createdAt || 0) + 10 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    byDay[d] = (byDay[d] || 0) + 1;
+  }
+  return { total, byDay };
+}
+
 export async function setPin(id, pin) {
   const data = await readAll();
   const u = data.users[id];
