@@ -337,7 +337,10 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       verifySent = !!sent.ok;
     } catch (e) { console.error('[verify-send]', e.detail || e.message); }
     res.setHeader('Set-Cookie', AUTH.cookieHeader(u.id, u.sessionVersion || 1));
-    res.json({ ok: true, user: safeUser(u), recoveryCode, verifySent });
+    // the native shell (Capacitor) sends x-fuel-native: 1 and needs a bearer
+    // token in the body — its WebView cannot reliably re-send the Lax cookie
+    const native = String(req.headers['x-fuel-native'] || '') === '1';
+    res.json({ ok: true, user: safeUser(u), recoveryCode, verifySent, ...(native ? { token: AUTH.makeApiToken(u.id, u.sessionVersion || 1) } : {}) });
   } catch (e) {
     const map = { bad_email: 'That email doesn’t look right.', weak_password: 'Use at least 8 characters.', bad_name: 'Add your name.', email_taken: 'An account with that email already exists — sign in instead.' };
     const code = map[e.message] ? (e.status || 400) : 502;
@@ -350,7 +353,8 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   try {
     const u = await AUTH.login(req.body || {});
     res.setHeader('Set-Cookie', AUTH.cookieHeader(u.id, u.sessionVersion || 1));
-    res.json({ ok: true, user: safeUser(u) });
+    const native = String(req.headers['x-fuel-native'] || '') === '1';
+    res.json({ ok: true, user: safeUser(u), ...(native ? { token: AUTH.makeApiToken(u.id, u.sessionVersion || 1) } : {}) });
   } catch (e) {
     res.status(e.status || 401).json({ error: 'bad_login', message: 'Email or password is wrong.' });
   }
@@ -362,12 +366,24 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 app.get('/api/auth/me', async (req, res) => {
-  const tok = AUTH.readToken(AUTH.parseCookies(req)[AUTH.COOKIE]);
-  if (!tok) return res.status(401).json({ error: 'auth_required' });
-  const u = await AUTH.byId(tok.uid);
-  if (!u) return res.status(401).json({ error: 'auth_required' });
-  if ((u.sessionVersion || 1) !== (tok.v || 1)) return res.status(401).json({ error: 'session_stale' });
+  // bearer API token (native shell) OR the session cookie
+  let u = await AUTH.userFromBearer(req);
+  if (!u) {
+    const tok = AUTH.readToken(AUTH.parseCookies(req)[AUTH.COOKIE]);
+    if (!tok) return res.status(401).json({ error: 'auth_required' });
+    u = await AUTH.byId(tok.uid);
+    if (!u) return res.status(401).json({ error: 'auth_required' });
+    if ((u.sessionVersion || 1) !== (tok.v || 1)) return res.status(401).json({ error: 'session_stale' });
+  }
   res.json({ ok: true, user: safeUser(u) });
+});
+
+// Native shell: mint a 30-day HMAC API token. Requires the SESSION COOKIE —
+// a bearer token cannot mint another token.
+app.get('/api/auth/token', async (req, res) => {
+  const u = await AUTH.cookieUser(req);
+  if (!u) return res.status(401).json({ error: 'auth_required' });
+  res.json({ ok: true, token: AUTH.makeApiToken(u.id, u.sessionVersion || 1), expiresIn: AUTH.API_TOKEN_MAX_AGE });
 });
 
 app.post('/api/auth/pin', AUTH.requireUser, async (req, res) => {

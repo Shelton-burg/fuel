@@ -15,6 +15,7 @@ const DESC = 'FUEL auth users';
 const SECRET = process.env.FUEL_SESSION_SECRET || (TOKEN ? createHash('sha256').update('fuel-sess|' + TOKEN).digest('hex') : 'dev-secret-not-for-production');
 export const COOKIE = 'fuel_sess';
 const MAX_AGE = 90 * 24 * 3600; // 90 days
+export const API_TOKEN_MAX_AGE = 30 * 24 * 3600; // 30 days — native-shell bearer token
 
 /* ── storage ─────────────────────────────────────────────────────────── */
 let mem = { users: {} };
@@ -166,6 +167,25 @@ export function readToken(tok) {
     return p;
   } catch { return null; }
 }
+/** Native-shell API tokens: HMAC-signed, purpose-tagged ('api') so a session
+    cookie token can never double as an API token. 30 days, versioned with the
+    session so a password reset signs the app out too. */
+export function makeApiToken(uid, v = 1, ttlMs = API_TOKEN_MAX_AGE * 1000) {
+  const body = Buffer.from(JSON.stringify({ uid, v, purpose: 'api', exp: Date.now() + ttlMs })).toString('base64url');
+  return `${body}.${sign(body)}`;
+}
+export function readApiToken(tok) {
+  try {
+    const [body, sig] = String(tok || '').split('.');
+    if (!body || !sig) return null;
+    const want = sign(body);
+    if (sig.length !== want.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(want))) return null;
+    const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (p.purpose !== 'api' || !p.uid || !p.exp || p.exp < Date.now()) return null;
+    return p;
+  } catch { return null; }
+}
+
 export function cookieHeader(uid, v = 1) {
   return `${COOKIE}=${makeToken(uid, v)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${MAX_AGE}`;
 }
@@ -486,7 +506,34 @@ export function currentUser(req) {
   return t ? t.uid : null;
 }
 
+/** user authenticated by a bearer API token — null otherwise (tampered,
+    expired, wrong-family or stale tokens fall through to the cookie path). */
+export async function userFromBearer(req) {
+  const m = /^Bearer[ \t]+(\S+)$/i.exec(String(req.headers.authorization || ''));
+  if (!m) return null;
+  const p = readApiToken(m[1]);
+  if (!p) return null;
+  const u = await byId(p.uid);
+  if (!u) return null;
+  if ((u.sessionVersion || 1) !== (p.v || 1)) return null;
+  return u;
+}
+
+/** user authenticated by the session cookie — null otherwise. */
+export async function cookieUser(req) {
+  const tok = readToken(parseCookies(req)[COOKIE]);
+  if (!tok) return null;
+  const u = await byId(tok.uid);
+  if (!u) return null;
+  if ((u.sessionVersion || 1) !== (tok.v || 1)) return null;
+  return u;
+}
+
 export async function requireUser(req, res, next) {
+  // Bearer API token (native shell) as an alternative to the session cookie.
+  // The cookie path below is byte-for-byte the pre-v63 behaviour.
+  const bu = await userFromBearer(req);
+  if (bu) { req.user = bu; return next(); }
   const tok = readToken(parseCookies(req)[COOKIE]);
   if (!tok) return res.status(401).json({ error: 'auth_required' });
   const u = await byId(tok.uid);
