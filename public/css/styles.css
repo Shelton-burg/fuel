@@ -1372,5 +1372,43 @@ button.stat-chip:active { transform:scale(.96); }
   padding:3px 8px; border-radius:999px; flex:0 0 auto;
   background:var(--panel); border:1px solid var(--line-2); color:var(--muted);
 }
+
+/* ── food section (v59) ─────────────────────────────────── */
+.food-section { display:grid; gap:12px; min-width:0; }
+.food-section > * { min-width:0; }
+.food-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.food-cats { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding:2px 0; }
+.food-cats::-webkit-scrollbar { display:none; }
+.food-cat {
+  padding:6px 14px; border-radius:999px; border:1px solid var(--line-2);
+  background:transparent; color:var(--text-2); font-size:12px; font-weight:600;
+  white-space:nowrap; flex:0 0 auto;
+}
+.food-cat.sel { background:var(--amber); border-color:var(--amber); color:#1A1203; }
+.food-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+.food-card {
+  text-align:left; padding:12px; border-radius:16px; width:100%; min-width:0;
+  background:rgba(255,255,255,.045); border:1px solid var(--line); color:var(--text);
+  display:flex; flex-direction:column; gap:3px;
+}
+.food-card:active { transform:scale(.97); }
+.food-emoji { font-size:24px; line-height:1; }
+/* scoped override: the global .food-name (favourites) is nowrap+ellipsis — recipe
+   card names wrap normally so nothing forces the grid wider than its column */
+.food-grid .food-name { white-space:normal; overflow:visible; text-overflow:clip; font-size:13.5px; line-height:1.3; }
+.food-mac { font-size:11px; color:var(--amber); font-weight:700; }
+.food-meta { font-size:10.5px; }
+@media (max-width:340px) {
+  .food-mac { font-size:10px; letter-spacing:-.02em; }
+  .food-meta { font-size:10px; }
+}
+.fr-macros { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 4px; }
+.fr-macros span {
+  padding:4px 9px; border-radius:8px; background:rgba(255,161,23,.12);
+  color:var(--amber); font-size:11px; font-weight:700;
+}
+.fr-h { margin:10px 0 4px; font-size:11.5px; color:var(--text-2); text-transform:uppercase; letter-spacing:.06em; }
+.fr-list { margin:0 0 8px; padding-left:18px; font-size:13px; line-height:1.6; color:var(--text); }
+.fr-list li { margin-bottom:3px; }
 .fav-toggle-bar.on .fav-toggle-state { border-color:var(--amber); color:var(--amber); }
 .label-actions { display:flex; flex-direction:column; gap:8px; margin-top:4px; }

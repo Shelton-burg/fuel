@@ -6,6 +6,7 @@ import * as CH from './charts.js';
 import * as SY from './sync.js';
 import { dayIdFor, PROGRAMS, PROGRAM_LIST, EX_LIB, exGroup } from './programs.js';
 import * as ABK from './autobak.js';
+import { FUEL_RECIPES } from './recipes.js';
 
 const $ = (q, r = document) => r.querySelector(q);
 const $$ = (q, r = document) => [...r.querySelectorAll(q)];
@@ -41,8 +42,9 @@ const FRUIT_NAMES = ['apple', 'banana', 'orange', 'mandarin', 'mango', 'strawber
 
 let fastSelPreset = '16:8';
 let fastTimer = null;
+let foodCat = 'all'; // v59 — food section category filter
 
-const APP_BUILD = 'v58';
+const APP_BUILD = 'v59';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -333,6 +335,7 @@ function renderToday() {
   renderFvTally();
   renderRecoveryChip();
   renderQuick();
+  renderFood();
   renderWeek();
 }
 
@@ -765,6 +768,76 @@ function recipeModal() {
 }
 
 $('#recipe-card')?.addEventListener('click', recipeModal);
+
+/* ══════════ food section: recipe pack (v59) ══════════ */
+function renderFood() {
+  const sec = $('#food-section');
+  if (!sec) return;
+  const cats = ['all', ...new Set(FUEL_RECIPES.map((r) => r.cat))];
+  $('#food-cats').innerHTML = cats
+    .map((c) => `<button class="food-cat${foodCat === c ? ' sel' : ''}" data-food-cat="${c}" type="button">${c === 'all' ? 'All' : c[0].toUpperCase() + c.slice(1)}</button>`)
+    .join('');
+  renderFoodGrid();
+}
+
+function renderFoodGrid() {
+  const list = FUEL_RECIPES.filter((r) => foodCat === 'all' || r.cat === foodCat);
+  const grid = $('#food-grid');
+  if (!grid) return;
+  grid.innerHTML = list
+    .map(
+      (r) => `<button class="food-card" data-food-id="${r.id}" data-food-cat="${r.cat}" type="button">
+        <span class="food-emoji">${r.emoji}</span>
+        <b class="food-name">${esc(r.name)}</b>
+        <span class="food-mac">${r.kcal} kcal · P${r.p} C${r.c} F${r.f}</span>
+        <span class="food-meta muted">${r.serves} serve${r.serves > 1 ? 's' : ''} · ${r.mins} min</span>
+      </button>`
+    )
+    .join('');
+}
+
+function foodRecipeModal(r) {
+  const { wrap } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-fr-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">${r.emoji} ${esc(r.name)}</div>
+    </div>
+    <div class="fr-macros"><span>${r.kcal} kcal</span><span>P ${r.p}g</span><span>C ${r.c}g</span><span>F ${r.f}g</span><span>${r.serves} serve${r.serves > 1 ? 's' : ''} · ${r.mins} min</span></div>
+    <h3 class="fr-h">Ingredients</h3>
+    <ul class="fr-list">${r.ingredients.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>
+    <h3 class="fr-h">Method</h3>
+    <ol class="fr-list">${r.method.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>
+    <div class="rc-log-row">
+      <select class="rc-meal" id="fr-meal">${S.MEALS.map((m) => `<option value="${m}"${m === 'dinner' ? ' selected' : ''}>${m[0].toUpperCase() + m.slice(1)}</option>`).join('')}</select>
+      <button class="btn-primary sm" id="fr-log" type="button">Log it</button>
+    </div>
+  `);
+  wrap.querySelector('#fr-log').addEventListener('click', () => {
+    const meal = wrap.querySelector('#fr-meal').value;
+    S.addEntry(meal, { name: r.name, kcal: r.kcal, p: r.p, c: r.c, f: r.f, qtyLabel: '1 serve' }, selDate);
+    vib(8);
+    toast(`${r.name} logged to ${meal}`);
+    wrap.remove();
+    if (isToday()) renderToday();
+  });
+  wrap.addEventListener('click', (e) => {
+    if (e.target.closest('[data-fr-close]')) wrap.remove();
+  });
+}
+
+$('#food-cats')?.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-food-cat]');
+  if (!b) return;
+  foodCat = b.dataset.foodCat;
+  renderFood();
+});
+
+$('#food-grid')?.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-food-id]');
+  if (!b) return;
+  const r = FUEL_RECIPES.find((x) => x.id === b.dataset.foodId);
+  if (r) foodRecipeModal(r);
+});
 
 $('#meals').addEventListener('click', (e) => {
   const del = e.target.closest('[data-del]');

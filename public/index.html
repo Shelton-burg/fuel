@@ -126,12 +126,6 @@
         <svg class="ct-chev"><use href="#i-chev"/></svg>
       </button>
 
-      <button class="panel recipe-card" id="recipe-card" type="button">
-        <span class="rc-ico">🍳</span>
-        <span class="ci-main"><b>Cook with what you've got</b><span class="muted sm">Pick ingredients → quick recipe ideas</span></span>
-        <svg class="ct-chev"><use href="#i-chev"/></svg>
-      </button>
-
       <button class="panel coach-teaser" id="coach-teaser" type="button">
         <span class="ct-ico"><svg><use href="#i-spark"/></svg></span>
         <span class="ct-main"><b id="ct-title">Ask your coach</b><span class="muted sm" id="ct-sub">Grounded in your last 14 days — eating, weight and training</span></span>
@@ -148,6 +142,18 @@
         <div class="q-label muted sm" id="q-fit-label" hidden>Fits what's left</div>
         <div class="chip-row wrap" id="quick-fit"></div>
       </div>
+
+      <!-- ══ FOOD (v59) ══ -->
+      <section class="food-section" id="food-section">
+        <div class="food-head"><h2 class="ph2">Food</h2><span class="muted sm">Pre-made recipes · or cook with what you've got</span></div>
+        <div class="food-cats" id="food-cats"></div>
+        <div class="food-grid" id="food-grid"></div>
+        <button class="panel recipe-card" id="recipe-card" type="button">
+          <span class="rc-ico">🍳</span>
+          <span class="ci-main"><b>Cook with what you've got</b><span class="muted sm">Pick ingredients → quick recipe ideas</span></span>
+          <svg class="ct-chev"><use href="#i-chev"/></svg>
+        </button>
+      </section>
 
       <div class="panel week-panel" id="week-panel" role="button" tabindex="0" aria-label="Open history">
         <div class="week-head"><h2 class="ph2">This week</h2><span class="muted" id="week-sub"></span></div>
