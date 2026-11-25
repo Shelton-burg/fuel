@@ -608,7 +608,20 @@ app.post('/api/notify', AUTH.requireUser, async (req, res) => {
 // imported modules (unit tests) get the express app without binding a port
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
+  // Activate the Postgres layer at boot. db.mjs is dormant until its first
+  // successful connection, and auth/sync/analytics only consult it once
+  // DB.active() is true — so without a boot call nothing would ever trigger
+  // ensure(). db.mjs rate-limits attempts to one per 30 s; retry a touch
+  // slower until connected (or forever, safely falling back to the gist).
+  if (process.env.DATABASE_URL) {
+    const tryConnect = () => {
+      DB.ensure()
+        .then((ok) => { if (!ok) setTimeout(tryConnect, 35000).unref(); })
+        .catch(() => setTimeout(tryConnect, 35000).unref());
+    };
+    tryConnect();
+  }
   app.listen(PORT, () => {
-    console.log(`FUEL listening on :${PORT} | ai:${GEMINI_KEY ? 'on' : 'off'} | db:${DB.active() ? 'on' : 'off'}`);
+    console.log(`FUEL listening on :${PORT} | ai:${GEMINI_KEY ? 'on' : 'off'} | db:${DB.enabled() ? 'on' : 'off'}`);
   });
 }
