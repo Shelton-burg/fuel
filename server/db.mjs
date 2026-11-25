@@ -113,6 +113,7 @@ function rowToUser(r) {
   return {
     id: r.uid, email: r.email, name: r.name || '', hash: r.hash, salt: r.salt,
     sessionVersion: r.session_version ?? 1, createdAt: Number(r.created_at || 0),
+    emailVerified: !!r.email_verified,
     ...extra,
   };
 }
