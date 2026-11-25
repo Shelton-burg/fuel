@@ -42,7 +42,7 @@ const FRUIT_NAMES = ['apple', 'banana', 'orange', 'mandarin', 'mango', 'strawber
 let fastSelPreset = '16:8';
 let fastTimer = null;
 
-const APP_BUILD = 'v57';
+const APP_BUILD = 'v58';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -241,9 +241,10 @@ function switchView(v) {
   vib(6);
   if (v === 'history') { renderHistory(); renderConsistency(); }
   if (v === 'settings') renderSettings();
-  if (v === 'today') renderWeek();
+  if (v === 'today') { renderWeek(); renderRecoveryChip(); }
   if (v === 'goals') renderGoals();
   if (v === 'coach') renderCoach();
+  if (v === 'recovery') renderRecovery();
 }
 
 /* ══════════ today render ══════════ */
@@ -330,9 +331,7 @@ function renderToday() {
   }).join('');
   renderDailyFeel();
   renderFvTally();
-  renderQuickFeel();
-  renderSleepPanel();
-  renderFastPanel();
+  renderRecoveryChip();
   renderQuick();
   renderWeek();
 }
@@ -441,6 +440,7 @@ $('#quick-feel')?.addEventListener('click', (e) => {
   vib(6);
   renderQuickFeel();
   renderCheckinCard();
+  renderRecoveryChip();
   toast(`${cell.querySelector('.qf-label').textContent} ${n}/5 logged`);
 });
 
@@ -477,6 +477,7 @@ $('#sleep-panel')?.addEventListener('click', (e) => {
     S.logCheckin(selDate, { ...c, sleepHours: v });
     vib(6);
     renderSleepPanel();
+    renderRecoveryChip();
     toast(`Sleep ${v}h logged`);
     return;
   }
@@ -487,6 +488,7 @@ $('#sleep-panel')?.addEventListener('click', (e) => {
     S.logCheckin(selDate, { ...c, sleepHours: next });
     vib(6);
     renderSleepPanel();
+    renderRecoveryChip();
     toast(`Sleep ${next}h logged`);
     return;
   }
@@ -496,6 +498,7 @@ $('#sleep-panel')?.addEventListener('click', (e) => {
     S.logCheckin(selDate, { ...c, sleepQuality: n });
     vib(6);
     renderSleepPanel();
+    renderRecoveryChip();
     toast(`Sleep quality ${n}/5 logged`);
   }
 });
@@ -538,7 +541,7 @@ function renderFastPanel() {
 
   const drawActive = () => {
     const a = S.getFasting().active;
-    if (!a) { renderFastPanel(); return; }
+    if (!a) { renderFastPanel(); renderRecoveryChip(); return; }
     const elapsedMs = Math.max(0, Date.now() - a.startedAt);
     const targetMs = a.targetHours * 36e5;
     const elapsedH = elapsedMs / 36e5;
@@ -547,6 +550,7 @@ function renderFastPanel() {
     const hit = elapsedMs >= targetMs;
     const endDt = new Date(a.startedAt + targetMs);
     const endStr = endDt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    renderRecoveryChip();
     el.innerHTML = `
       <div class="fp-head"><b>⏱️ Fasting · ${esc(a.preset)}</b><span class="muted sm">${hit ? 'Goal reached! 🎉' : `Goal ${endStr}`}</span></div>
       <div class="fp-active">
@@ -581,6 +585,7 @@ $('#fast-panel')?.addEventListener('click', (e) => {
     S.startFast(sel.id, sel.hours);
     vib(8);
     renderFastPanel();
+    renderRecoveryChip();
     toast(`${sel.label} fast started`);
     return;
   }
@@ -588,15 +593,47 @@ $('#fast-panel')?.addEventListener('click', (e) => {
     const rec = S.endFast();
     vib([20, 40, 20]);
     renderFastPanel();
+    renderRecoveryChip();
     if (rec) toast(`Fast saved: ${rec.actualHours}h (${rec.preset})`);
     return;
   }
   if (e.target.closest('[data-fp-cancel]')) {
     S.cancelFast();
     renderFastPanel();
+    renderRecoveryChip();
     toast('Fast cancelled');
   }
 });
+
+/* ══════════ recovery view (v58) ══════════ */
+function renderRecovery() {
+  renderSleepPanel();
+  renderFastPanel();
+  renderQuickFeel();
+  renderRecoveryChip();
+}
+
+function renderRecoveryChip() {
+  const el = $('#recovery-chip');
+  const sub = $('#recovery-chip-sub');
+  if (!el || !sub) return;
+  const c = S.getCheckin(selDate) || {};
+  const hrs = typeof c.sleepHours === 'number' ? c.sleepHours : null;
+  const f = S.getFasting();
+  let fastTxt = 'No fast running';
+  if (f.active) {
+    const a = f.active;
+    const elapsedMs = Math.max(0, Date.now() - a.startedAt);
+    const remMs = Math.max(0, a.targetHours * 36e5 - elapsedMs);
+    fastTxt = `${fmtFastClock(remMs)} left`;
+  } else {
+    const doneCount = (f.history || []).filter((h) => h.completed).length;
+    if (doneCount) fastTxt = `${doneCount} fast${doneCount === 1 ? '' : 's'} done`;
+  }
+  sub.textContent = `😴 ${hrs != null ? `${hrs}h` : '—'} · ⏱️ ${fastTxt}`;
+}
+
+$('#recovery-chip')?.addEventListener('click', () => switchView('recovery'));
 
 /* ══════════ recipes from ingredients (v55) ══════════ */
 let recipePicks = [];

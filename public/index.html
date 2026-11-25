@@ -120,11 +120,11 @@
 
       <div class="panel fv-panel" id="fv-tally"></div>
 
-      <div class="panel qf-panel" id="quick-feel"></div>
-
-      <div class="panel sleep-panel" id="sleep-panel"></div>
-
-      <div class="panel fast-panel" id="fast-panel"></div>
+      <button class="panel checkin-card recovery-chip" id="recovery-chip" type="button">
+        <span class="ci-ico"><svg><use href="#i-moon"/></svg></span>
+        <span class="ci-main"><b>Recovery</b><span class="muted sm" id="recovery-chip-sub">Sleep · fasting · how you feel</span></span>
+        <svg class="ct-chev"><use href="#i-chev"/></svg>
+      </button>
 
       <button class="panel recipe-card" id="recipe-card" type="button">
         <span class="rc-ico">🍳</span>
@@ -153,6 +153,14 @@
         <div class="week-head"><h2 class="ph2">This week</h2><span class="muted" id="week-sub"></span></div>
         <canvas id="week-chart" height="64"></canvas>
       </div>
+    </section>
+
+    <!-- ══ RECOVERY ══ -->
+    <section id="view-recovery" class="view">
+      <div class="page-head"><h1>Recovery</h1><p class="muted">Sleep, fasting and how you feel</p></div>
+      <div class="panel sleep-panel" id="sleep-panel"></div>
+      <div class="panel fast-panel" id="fast-panel"></div>
+      <div class="panel qf-panel" id="quick-feel"></div>
     </section>
 
     <!-- ══ TRAIN ══ -->
@@ -323,6 +331,7 @@
   <nav class="tabbar">
     <button class="tab active" data-view="today" type="button"><svg><use href="#i-flame"/></svg><span>Today</span></button>
     <button class="tab" data-view="train" type="button"><svg><use href="#i-dumbbell"/></svg><span>Train</span></button>
+    <button class="tab" data-view="recovery" type="button"><svg><use href="#i-moon"/></svg><span>Recovery</span></button>
     <button class="tab-fab" id="btn-fab" type="button" aria-label="Add food"><svg><use href="#i-plus"/></svg></button>
     <button class="tab" data-view="history" type="button"><svg><use href="#i-clock"/></svg><span>History</span></button>
     <button class="tab" data-view="settings" type="button"><svg><use href="#i-gear"/></svg><span>Settings</span></button>
