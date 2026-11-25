@@ -44,7 +44,7 @@ let fastSelPreset = '16:8';
 let fastTimer = null;
 let foodCat = 'all'; // v59 — food section category filter
 
-const APP_BUILD = 'v59';
+const APP_BUILD = 'v60';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -247,6 +247,7 @@ function switchView(v) {
   if (v === 'goals') renderGoals();
   if (v === 'coach') renderCoach();
   if (v === 'recovery') renderRecovery();
+  if (v === 'food') renderFood();
 }
 
 /* ══════════ today render ══════════ */
@@ -335,7 +336,6 @@ function renderToday() {
   renderFvTally();
   renderRecoveryChip();
   renderQuick();
-  renderFood();
   renderWeek();
 }
 

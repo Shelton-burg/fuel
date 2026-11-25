@@ -192,7 +192,7 @@ svg.sm { width:14px; height:14px; }
   max-width:480px; margin:0 auto;
   height:calc(var(--nav-h) + env(safe-area-inset-bottom));
   padding:0 10px env(safe-area-inset-bottom);
-  display:grid; grid-template-columns:repeat(6,1fr);
+  display:grid; grid-template-columns:repeat(7,1fr);
   background:rgba(10,13,20,.86);
   backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
   border-top:1px solid var(--line);
@@ -203,6 +203,11 @@ svg.sm { width:14px; height:14px; }
   transition:color .2s;
 }
 .tab svg { width:22px; height:22px; }
+/* v60 — 7 nav columns; tighten labels/svg on narrow phones so nothing clips */
+@media (max-width:360px) {
+  .tab { font-size:9px; letter-spacing:.01em; }
+  .tab svg { width:19px; height:19px; }
+}
 .tab.active { color:var(--amber); }
 .tab.active svg { filter:drop-shadow(0 0 8px rgba(255,161,23,.45)); }
 .tab:active { transform:scale(.94); }
