@@ -150,6 +150,27 @@ setInterval(async () => {
 const hashPw = (pw, salt) => scryptSync(String(pw), salt, 64).toString('hex');
 const normEmail = (e) => String(e || '').trim().toLowerCase();
 
+/* ── FUEL Pro entitlement (v67) ──────────────────────────────────────────
+   plan lives on the user record ('free' | 'pro', default free). Billing is
+   not wired yet — Pro is granted by the owner dashboard or by the
+   FUEL_PRO_EMAILS env list (comma-separated emails, read per request). */
+const proEmails = () => new Set(String(process.env.FUEL_PRO_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+export const planOf = (u) => (u && (u.plan === 'pro' || proEmails().has(normEmail(u.email)))) ? 'pro' : 'free';
+export async function setPlan(uid, plan) {
+  const p = plan === 'pro' ? 'pro' : 'free';
+  const data = await readAll({ fresh: true });
+  const u = data.users[uid];
+  if (!u) throw Object.assign(new Error('no_user'), { status: 404 });
+  u.plan = p;
+  await writeAll(data);
+  return u;
+}
+/** minimal account rows for the owner dashboard — email + plan + createdAt */
+export async function listAll() {
+  const data = await readAll();
+  return Object.values(data.users).map((u) => ({ id: u.id, email: u.email, plan: planOf(u), storedPlan: u.plan || 'free', createdAt: u.createdAt || 0 }));
+}
+
 /* ── sessions ────────────────────────────────────────────────────────── */
 const sign = (s) => createHmac('sha256', SECRET).update(s).digest('base64url');
 export function makeToken(uid, v = 1) {
@@ -200,7 +221,7 @@ export function parseCookies(req) {
 }
 
 /* ── users ───────────────────────────────────────────────────────────── */
-export const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, slot: u.slot, hasPin: !!u.pinHash, emailVerified: !!u.emailVerified, createdAt: u.createdAt });
+export const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, slot: u.slot, hasPin: !!u.pinHash, emailVerified: !!u.emailVerified, createdAt: u.createdAt, plan: planOf(u) });
 
 export async function register({ name, email, password }) {
   const em = normEmail(email);
@@ -212,7 +233,7 @@ export async function register({ name, email, password }) {
   if (Object.values(data.users).some((u) => u.email === em)) throw Object.assign(new Error('email_taken'), { status: 409 });
   const salt = randomBytes(16).toString('hex');
   const id = 'u_' + randomBytes(9).toString('base64url');
-  const user = { id, name: nm, email: em, salt, hash: hashPw(password, salt), slot: 'acct-' + id, createdAt: Date.now() };
+  const user = { id, name: nm, email: em, salt, hash: hashPw(password, salt), slot: 'acct-' + id, createdAt: Date.now(), plan: 'free' };
   data.users[id] = user;
   await writeAll(data);
   return user;
@@ -233,7 +254,7 @@ export async function createAccount({ name, email, password }) {
   const rec = newRecovery();
   const ver = newVerify();
   const user = {
-    id, name: nm, email: em, salt, hash: hashPw(password, salt), slot: 'acct-' + id, createdAt: Date.now(),
+    id, name: nm, email: em, salt, hash: hashPw(password, salt), slot: 'acct-' + id, createdAt: Date.now(), plan: 'free',
     recoverySalt: rec.salt, recoveryHash: rec.hash,
     verifySalt: ver.salt, verifyHash: ver.hash, verifyExp: Date.now() + 24 * 60 * 60 * 1000, verifyTries: 0,
   };

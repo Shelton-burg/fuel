@@ -114,6 +114,7 @@ function rowToUser(r) {
     id: r.uid, email: r.email, name: r.name || '', hash: r.hash, salt: r.salt,
     sessionVersion: r.session_version ?? 1, createdAt: Number(r.created_at || 0),
     emailVerified: !!r.email_verified,
+    plan: r.plan === undefined ? 'free' : r.plan, // v67 — free | pro
     ...extra,
   };
 }
@@ -134,16 +135,18 @@ export async function readUser(uid) {
 export async function upsertUser(u) {
   if (!(await ensure()) || !active()) return (await import('./auth.mjs')).saveUser(u);
   await q(
-    `INSERT INTO users (uid, email, name, hash, salt, session_version, has_pin, email_verified, recovery_hash, created_at, extra)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    `INSERT INTO users (uid, email, name, hash, salt, session_version, has_pin, email_verified, recovery_hash, plan, created_at, extra)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      ON CONFLICT (uid) DO UPDATE SET
        email = EXCLUDED.email, name = EXCLUDED.name, hash = EXCLUDED.hash,
        salt = EXCLUDED.salt, session_version = EXCLUDED.session_version,
        has_pin = EXCLUDED.has_pin, email_verified = EXCLUDED.email_verified,
-       recovery_hash = EXCLUDED.recovery_hash, created_at = EXCLUDED.created_at,
+       recovery_hash = EXCLUDED.recovery_hash, plan = EXCLUDED.plan,
+       created_at = EXCLUDED.created_at,
        extra = EXCLUDED.extra`,
     [u.id, u.email, u.name || '', u.hash, u.salt, u.sessionVersion || 1,
      !!u.pinHash, !!u.emailVerified, u.recoveryHash || null,
+     u.plan === 'pro' ? 'pro' : 'free',
      u.createdAt || Date.now(), JSON.stringify(pickExtra(u))],
   );
   return u;
@@ -157,11 +160,12 @@ export async function migrateUser(u) {
   const has = await q('SELECT value FROM db_meta WHERE key = $1', [key]);
   if (has.rows.length) return { skipped: true };
   await q(
-    `INSERT INTO users (uid, email, name, hash, salt, session_version, has_pin, email_verified, recovery_hash, created_at, extra)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    `INSERT INTO users (uid, email, name, hash, salt, session_version, has_pin, email_verified, recovery_hash, plan, created_at, extra)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      ON CONFLICT (uid) DO NOTHING`,
     [u.id, u.email, u.name || '', u.hash, u.salt, u.sessionVersion || 1,
      !!u.pinHash, !!u.emailVerified, u.recoveryHash || null,
+     u.plan === 'pro' ? 'pro' : 'free',
      u.createdAt || Date.now(), JSON.stringify(pickExtra(u))],
   );
   await q('INSERT INTO db_meta (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING', [key, String(Date.now())]);

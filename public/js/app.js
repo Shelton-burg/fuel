@@ -45,7 +45,14 @@ let fastSelPreset = '16:8';
 let fastTimer = null;
 let foodCat = 'all'; // v59 — food section category filter
 
-const APP_BUILD = 'v63';
+const APP_BUILD = 'v67';
+
+/* ── FUEL Pro entitlement (v67) ─────────────────────────────────────────
+   plan arrives on /api/auth/me + the login/register responses
+   (window.__fuelUser.plan). Demo mode (?demo=1) has no account at all, so it
+   is treated as Pro — the seeded demo suites must stay unaffected by gating. */
+const planOf = () => (window.__fuelDemo ? 'pro' : (window.__fuelUser?.plan || 'free'));
+const isPro = () => planOf() === 'pro';
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // false on a first-ever install: that worker's clients.claim() is not an "update"
   let swControlled = !!navigator.serviceWorker.controller;
@@ -134,12 +141,12 @@ $('#goals-body').addEventListener('click', (e) => {
     toast(`Back to the calculator — ${fmt(tt.kcal)} kcal`);
     return;
   }
-  if (t.closest('#btn-ask-coach')) { if (!coachBusy) askCoach(); return; }
+  if (t.closest('#btn-ask-coach')) { if (!isPro()) { showProUpsell(); return; } if (!coachBusy) askCoach(); return; }
   if (t.closest('#btn-apply-targets')) { applyCoachPlan(); return; }
   if (t.closest('#btn-apply-program')) { applyCoachProgram(); return; }
-  if (t.closest('#btn-run-weekly') || t.closest('#btn-ask-weekly')) { if (!weeklyBusy) runWeekly(false); return; }
-  if (t.closest('#btn-build-full')) { if (!mpBusy) runMealPlan(S.getSetting('mealPlan')?.mode && t.closest('.plan-foot') ? S.getSetting('mealPlan').mode : 'full'); return; }
-  if (t.closest('#btn-build-left')) { if (!mpBusy) runMealPlan('left'); return; }
+  if (t.closest('#btn-run-weekly') || t.closest('#btn-ask-weekly')) { if (!isPro()) { showProUpsell(); return; } if (!weeklyBusy) runWeekly(false); return; }
+  if (t.closest('#btn-build-full')) { if (!isPro()) { showProUpsell(); return; } if (!mpBusy) runMealPlan(S.getSetting('mealPlan')?.mode && t.closest('.plan-foot') ? S.getSetting('mealPlan').mode : 'full'); return; }
+  if (t.closest('#btn-build-left')) { if (!isPro()) { showProUpsell(); return; } if (!mpBusy) runMealPlan('left'); return; }
   const mpAdd = t.closest('[data-mp-add]');
   if (mpAdd) { addMealPlan(mpAdd.dataset.mpAdd); return; }
   if (t.closest('#btn-mp-add-all')) { addMealPlan('all'); return; }
@@ -240,6 +247,7 @@ function openDaySheet() {
 }
 
 function switchView(v) {
+  if (v === 'coach' && !isPro()) { showProUpsell(); return; } // FUEL Pro — v67
   $$('.view').forEach((s) => s.classList.toggle('active', s.id === 'view-' + v));
   $$('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
   vib(6);
@@ -774,7 +782,7 @@ function recipeModal() {
   });
 }
 
-$('#recipe-card')?.addEventListener('click', recipeModal);
+$('#recipe-card')?.addEventListener('click', () => { if (!isPro()) { showProUpsell(); return; } recipeModal(); });
 
 /* ══════════ food section: recipe pack (v59) ══════════ */
 function renderFood() {
@@ -1061,8 +1069,8 @@ $('#recents-list').addEventListener('click', (e) => {
 });
 
 $('#btn-scan').addEventListener('click', () => { closeSheet(); scanBarcode(); });
-$('#btn-photo').addEventListener('click', () => { closeSheet(); captureLabel(); });
-$('#btn-plate').addEventListener('click', () => { closeSheet(); capturePlate(); });
+$('#btn-photo').addEventListener('click', () => { closeSheet(); if (!isPro()) { showProUpsell(); return; } captureLabel(); });
+$('#btn-plate').addEventListener('click', () => { closeSheet(); if (!isPro()) { showProUpsell(); return; } capturePlate(); });
 $('#btn-search-food').addEventListener('click', () => { closeSheet(); searchModal(); });
 $('#btn-manual').addEventListener('click', () => { closeSheet(); manualModal(); });
 
@@ -1084,6 +1092,23 @@ function toast(msg, icon = 'i-check') {
   t.hidden = false;
   clearTimeout(t._h);
   t._h = setTimeout(() => { t.hidden = true; }, 2200);
+}
+
+/* ── FUEL Pro upsell (v67) — honest sheet, no fake urgency ────────────── */
+function showProUpsell() {
+  const { wrap, close } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">FUEL Pro</div>
+    </div>
+    <div class="pro-upsell">
+      <div class="pu-flame"><svg><use href="#i-flame"/></svg></div>
+      <h2 class="pu-h">AI label scanning, plate scans, coach chat, meal plans &amp; recipes.</h2>
+      <p class="pu-sub">Talk to the owner to upgrade (Play Store billing coming soon).</p>
+      <button class="btn ghost" data-close type="button">Not now</button>
+    </div>
+  `);
+  wrap.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
 }
 
 /* ══════════ portion modal (add · or edit an existing entry) ══════════ */
@@ -2200,6 +2225,7 @@ function renderGoals() {
     <div class="panel coach-cta">
       ${err ? `<p class="coach-err">${esc(err)}</p>` : ''}
       <button class="btn primary" id="btn-ask-coach" type="button">Ask the AI coach</button>
+      ${isPro() ? '' : '<span class="pro-pill">FUEL Pro</span>'}
       <p class="hint muted">Reads your stats, the last 2 weeks of eating, your weigh-ins and your workouts — then recommends your calories, macros and training.</p>
     </div>`;
   }
@@ -2346,7 +2372,7 @@ function weeklyHTML() {
   if (!w) {
     return `<div class="panel coach-cta">
       ${err ? `<p class="coach-err">${esc(err)}</p>` : ''}
-      <h2 class="ph2">Weekly check-in</h2>
+      <h2 class="ph2">Weekly check-in ${isPro() ? '' : '<span class="pro-pill">FUEL Pro</span>'}</h2>
       <p class="hint muted">Runs by itself once a week — it reviews your weight trend, eating and training, then suggests small tweaks (nothing changes without your tap).</p>
       <button class="btn ghost" id="btn-run-weekly" type="button">Run this week's check-in</button>
     </div>`;
@@ -2456,6 +2482,7 @@ function applyWeeklyTweak(i) {
 async function maybeWeeklyCheckin() {
   try {
     if (new URLSearchParams(location.search).get('demo') === '1') return; // QA runs it by hand
+    if (!isPro()) return; // FUEL Pro — free plans keep the silent auto-run off (v67)
     const last = S.getSetting('weeklyReview');
     if (last && Date.now() - last.ts < 6 * 864e5) return;
     if (S.recentDays(7).filter((d) => d.any).length < 3) return;
@@ -2472,7 +2499,7 @@ function mealHTML() {
   if (mpBusy) return `<div class="panel"><div class="loading-row">Building your day…</div></div>`;
   if (!mp) {
     return `<div class="panel coach-cta">
-      <h2 class="ph2">Build my day</h2>
+      <h2 class="ph2">Build my day ${isPro() ? '' : '<span class="pro-pill">FUEL Pro</span>'}</h2>
       <p class="hint muted">The coach drafts breakfast, lunch, dinner and snacks hitting your targets — from foods you actually eat. Add any meal to today with one tap.</p>
       <button class="btn primary" id="btn-build-full" type="button">Build a full day (${fmt(g.kcal)} kcal)</button>
       ${left > 300 ? `<button class="btn ghost" id="btn-build-left" type="button">Just what's left today (${fmt(left)} kcal)</button>` : ''}
@@ -2780,9 +2807,14 @@ function renderAccountPanel() {
   if (!el) return;
   const u = window.__fuelUser || null;
   if (!u) { el.innerHTML = '<p class="hint muted">Not signed in.</p>'; return; }
+  const pro = u.plan === 'pro';
   el.innerHTML = `
     <p class="sm" style="margin-bottom:4px"><b>${esc(u.name)}</b></p>
     <p class="muted sm" style="margin-bottom:12px">${esc(u.email)} · ${u.emailVerified ? '<span class="cb-good">email verified ✓</span>' : '<span class="cb-bad">email not verified</span>'}</p>
+    <div class="plan-row">
+      <span class="plan-badge${pro ? ' pro' : ''}">${pro ? 'FUEL Pro' : 'Free'}</span>
+      ${pro ? '<span class="muted sm">All AI features unlocked</span>' : '<button class="link-btn" id="btn-pro-info" type="button">AI features need FUEL Pro</button>'}
+    </div>
     <div id="acc-verify">${u.emailVerified ? '' : `
       <label class="field"><span>Verification code</span><input id="acc-vcode" type="text" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code"></label>
       <button class="btn ghost" id="btn-verify-mail" type="button">Verify email</button>
@@ -2878,6 +2910,7 @@ document.addEventListener('click', async (e) => {
     } catch { toast('Could not send the link right now', 'i-x'); }
     return;
   }
+  if (t.closest('#btn-pro-info')) { showProUpsell(); return; }
   if (t.closest('#btn-signout')) {
     try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
     location.reload();
@@ -3661,6 +3694,7 @@ function renderCoachTeaser() {
 }
 
 async function coachSend(text) {
+  if (!isPro()) { showProUpsell(); return; } // FUEL Pro — v67
   const t = String(text || '').replace(/\s+/g, ' ').trim();
   if (!t || coachSending) return;
   coachSending = true;
@@ -3726,7 +3760,7 @@ function applyCoachAction(action) {
   renderCoach();
 }
 
-$('#coach-teaser')?.addEventListener('click', () => switchView('coach'));
+$('#coach-teaser')?.addEventListener('click', () => { if (!isPro()) { showProUpsell(); return; } switchView('coach'); });
 $('#coach-back')?.addEventListener('click', () => switchView('today'));
 $('#coach-clear')?.addEventListener('click', () => { saveCoachThread([]); renderCoach(); renderCoachTeaser(); toast('Conversation cleared'); });
 document.addEventListener('submit', (e) => {

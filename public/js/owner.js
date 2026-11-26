@@ -51,14 +51,14 @@ $('#btn-logout').addEventListener('click', async () => {
   await fetch('/api/owner/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
   location.reload();
 });
-$('#btn-refresh').addEventListener('click', () => loadStats().catch(() => {}));
+$('#btn-refresh').addEventListener('click', () => { loadStats().catch(() => {}); loadUsers().catch(() => {}); });
 
 async function enterDashboard(email) {
   $('#auth-wrap').classList.add('hidden');
   $('#dash').classList.remove('hidden');
   if (email) $('#dash-email').textContent = esc(email);
-  try { await loadStats(); } catch {}
-  setInterval(() => loadStats().catch(() => {}), 60 * 1000);
+  try { await loadStats(); await loadUsers(); } catch {}
+  setInterval(() => { loadStats().catch(() => {}); loadUsers().catch(() => {}); }, 60 * 1000);
 }
 
 function level(n) {
@@ -121,6 +121,57 @@ function render(s) {
 
   $('#dash-fine').textContent = `${s.disclaimer || 'Aggregate counts only — never personal data.'} · updated ${new Date(s.updatedAt).toLocaleTimeString('en-AU')}`;
 }
+
+// ── users & plans (v67) ────────────────────────────────────────────────
+function fmtLastActive(day) {
+  if (!day) return 'never';
+  const d = new Date(day + 'T00:00:00Z');
+  const diff = Math.floor((Date.now() - d.getTime()) / 864e5);
+  if (diff <= 0) return 'today';
+  if (diff === 1) return 'yesterday';
+  if (diff < 7) return diff + 'd ago';
+  if (diff < 30) return Math.floor(diff / 7) + 'w ago';
+  return d.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+}
+
+async function loadUsers() {
+  const r = await fetch('/api/owner/users', { credentials: 'same-origin' });
+  if (r.status === 401) { location.reload(); return; }
+  const j = await r.json();
+  if (!r.ok || !j.ok) throw new Error('users failed');
+  const rows = j.users || [];
+  $('#users-body').innerHTML = rows.length ? rows.map((u) => {
+    const effPro = u.plan === 'pro';
+    const auto = effPro && u.storedPlan !== 'pro';
+    return `<tr>
+      <td>${esc(u.email)}</td>
+      <td><span class="plan-badge${effPro ? ' pro' : ''}${auto ? ' auto' : ''}">${effPro ? 'Pro' : 'Free'}${auto ? ' · auto' : ''}</span></td>
+      <td class="sub">${fmtLastActive(u.lastActive)}</td>
+      <td class="num">
+        ${effPro ? `<button class="row-btn" data-plan="${esc(u.id)}|free" type="button">Revoke Pro</button>` : `<button class="row-btn" data-plan="${esc(u.id)}|pro" type="button">Grant Pro</button>`}
+      </td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="4" class="sub">No users yet.</td></tr>';
+}
+
+$('#users-body').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-plan]');
+  if (!b) return;
+  const [uid, plan] = b.dataset.plan.split('|');
+  b.disabled = true;
+  try {
+    const r = await fetch('/api/owner/set-plan', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid, plan }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.message || 'Could not change the plan');
+    await loadUsers();
+  } catch (ex) {
+    alert(String(ex.message || ex));
+  } finally { b.disabled = false; }
+});
 
 // who's already signed in?
 (async () => {

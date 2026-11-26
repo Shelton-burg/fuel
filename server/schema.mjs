@@ -18,6 +18,7 @@ export const TABLES = {
     has_pin         BOOLEAN NOT NULL DEFAULT false,
     email_verified  BOOLEAN NOT NULL DEFAULT false,
     recovery_hash   TEXT,
+    plan            TEXT NOT NULL DEFAULT 'free',
     created_at      BIGINT NOT NULL,
     extra           JSONB NOT NULL DEFAULT '{}'::jsonb
   )`,
@@ -53,7 +54,14 @@ export const TABLES = {
   )`,
 };
 
-export const SCHEMA = [TABLES.users, TABLES.sync_blobs, TABLES.autobak_blobs, TABLES.analytics_events, TABLES.db_meta];
+export const SCHEMA = [
+  TABLES.users,
+  // Lazy column add — CREATE TABLE IF NOT EXISTS does nothing for an existing
+  // table, so columns added after the original schema need an idempotent
+  // ALTER to reach already-provisioned databases (v67: plan).
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'free'`,
+  TABLES.sync_blobs, TABLES.autobak_blobs, TABLES.analytics_events, TABLES.db_meta,
+];
 
 export const USER_EXTRA_FIELDS = [
   'slot', 'pinSalt', 'pinHash', 'recoverySalt', 'verifySalt', 'verifyHash',

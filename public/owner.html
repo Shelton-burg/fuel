@@ -81,6 +81,13 @@
   td .pill { display: inline-block; min-width: 34px; text-align: right; background: var(--panel-2); border-radius: 6px; padding: 3px 8px; font-weight: 700; }
   .up { color: var(--green); } .down { color: var(--red); } .flat { color: var(--muted); }
 
+  /* users & plans */
+  .plan-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; background: var(--panel-2); color: var(--text-2); border: 1px solid var(--line); }
+  .plan-badge.pro { background: rgba(245,165,36,.14); color: var(--amber); border-color: rgba(245,165,36,.4); }
+  .plan-badge.auto { background: rgba(52,211,153,.12); color: var(--green); border-color: rgba(52,211,153,.35); }
+  .row-btn { background: transparent; color: var(--text-2); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; margin-left: 6px; }
+  .row-btn:hover { color: var(--amber); border-color: var(--amber); }
+
   /* ai budget */
   .ai-row { display: grid; grid-template-columns: 90px 1fr 74px; gap: 12px; align-items: center; padding: 7px 0; font-size: 13px; }
   .ai-row .name { color: var(--text-2); }
@@ -126,6 +133,15 @@
   </header>
 
   <div class="grid stats" id="stat-cards"></div>
+
+  <div class="card">
+    <h2 class="sect">Users &amp; plans</h2>
+    <p class="sub" style="margin:0 0 12px">Grant or revoke FUEL Pro per user. Emails are masked. Billing is not wired yet — Pro comes from here or the FUEL_PRO_EMAILS env list.</p>
+    <table>
+      <thead><tr><th>Email</th><th>Plan</th><th>Last active</th><th class="num">Actions</th></tr></thead>
+      <tbody id="users-body"><tr><td colspan="4" class="sub">Loading…</td></tr></tbody>
+    </table>
+  </div>
 
   <div class="two">
     <div class="card">

@@ -1421,3 +1421,23 @@ button.stat-chip:active { transform:scale(.96); }
 .fr-list li { margin-bottom:3px; }
 .fav-toggle-bar.on .fav-toggle-state { border-color:var(--amber); color:var(--amber); }
 .label-actions { display:flex; flex-direction:column; gap:8px; margin-top:4px; }
+
+/* ══════════ FUEL Pro (v67) — plan badge + upsell sheet ══════════ */
+.plan-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.plan-badge {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 12px; border-radius:999px; font-size:12px; font-weight:700;
+  background:var(--panel-2); color:var(--text-2); border:1px solid var(--line);
+}
+.plan-badge.pro { background:var(--amber-soft); color:var(--amber); border-color:rgba(255,161,23,.35); }
+.pro-pill {
+  display:inline-block; vertical-align:middle; margin-left:8px;
+  padding:2px 9px; border-radius:999px; font-size:10px; font-weight:800; letter-spacing:.06em;
+  background:var(--amber-soft); color:var(--amber); border:1px solid rgba(255,161,23,.3);
+}
+.pro-upsell { padding:16px 18px 20px; text-align:center; }
+.pro-upsell .pu-flame { margin:2px auto 12px; width:58px; height:58px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--amber-soft); }
+.pro-upsell .pu-flame svg { width:30px; height:30px; color:var(--amber); }
+.pro-upsell .pu-h { margin:0 0 10px; font-size:17px; line-height:1.45; color:var(--text); }
+.pro-upsell .pu-sub { margin:0 0 18px; font-size:13.5px; line-height:1.55; color:var(--muted); }
+.pro-upsell .btn { width:100%; }

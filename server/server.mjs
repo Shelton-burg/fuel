@@ -40,6 +40,17 @@ const DEEPSEEK_KEY = loadKey('DEEPSEEK_API_KEY');
 const KEYS = { deepseek: DEEPSEEK_KEY, gemini: GEMINI_KEY };
 const hasCoach = !!(DEEPSEEK_KEY || GEMINI_KEY);
 
+/* ── FUEL Pro gating (v67) ──────────────────────────────────────────────
+   The AI-costly routes need a Pro plan. Sits AFTER requireUser, so it only
+   ever judges an authenticated account — demo mode (?demo=1) never sends a
+   session cookie, so demo requests are answered by requireUser (401) exactly
+   as before and the demo suites that route-mock these endpoints never see
+   this middleware at all. */
+const requirePro = (req, res, next) => {
+  if (AUTH.planOf(req.user) === 'pro') return next();
+  return res.status(403).json({ error: 'plan_required', message: 'FUEL Pro unlocks AI label scanning, plate scans, the coach, meal plans and recipes.' });
+};
+
 export const app = express();
 app.use(express.json({ limit: '6mb' }));
 /* ── public legal pages + account-deletion link ──────────────────────────
@@ -119,7 +130,7 @@ app.get('/api/health', (req, res) => res.json({
   db: DB.active(),
 }));
 
-app.post('/api/parse-label', AUTH.requireUser, AUTH.aiBudget('label', 80), async (req, res) => {
+app.post('/api/parse-label', AUTH.requireUser, requirePro, AUTH.aiBudget('label', 80), async (req, res) => {
   try {
     if (!GEMINI_KEY) return res.status(503).json({ error: 'ai_not_configured', message: 'AI scanner not configured yet.' });
     const { image } = req.body || {};
@@ -149,7 +160,7 @@ app.post('/api/parse-label', AUTH.requireUser, AUTH.aiBudget('label', 80), async
   }
 });
 
-app.post('/api/plate-scan', AUTH.requireUser, AUTH.aiBudget('plate', 40), async (req, res) => {
+app.post('/api/plate-scan', AUTH.requireUser, requirePro, AUTH.aiBudget('plate', 40), async (req, res) => {
   try {
     if (!GEMINI_KEY) return res.status(503).json({ error: 'ai_not_configured', message: 'AI plate scanner not configured yet.' });
     const { image } = req.body || {};
@@ -179,7 +190,7 @@ app.post('/api/plate-scan', AUTH.requireUser, AUTH.aiBudget('plate', 40), async 
   }
 });
 
-app.post('/api/coach', AUTH.requireUser, AUTH.aiBudget('coach', 40), async (req, res) => {
+app.post('/api/coach', AUTH.requireUser, requirePro, AUTH.aiBudget('coach', 40), async (req, res) => {
   try {
     if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const payload = req.body && req.body.payload;
@@ -193,7 +204,7 @@ app.post('/api/coach', AUTH.requireUser, AUTH.aiBudget('coach', 40), async (req,
   }
 });
 
-app.post('/api/coach/chat', AUTH.requireUser, AUTH.aiBudget('chat', 120), async (req, res) => {
+app.post('/api/coach/chat', AUTH.requireUser, requirePro, AUTH.aiBudget('chat', 120), async (req, res) => {
   try {
     if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const body = req.body || {};
@@ -224,7 +235,7 @@ app.post('/api/nutrition-gaps', AUTH.requireUser, AUTH.aiBudget('gaps', 30), asy
   }
 });
 
-app.post('/api/recipes', AUTH.requireUser, AUTH.aiBudget('recipes', 30), async (req, res) => {
+app.post('/api/recipes', AUTH.requireUser, requirePro, AUTH.aiBudget('recipes', 30), async (req, res) => {
   try {
     if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const payload = req.body && req.body.payload;
@@ -238,7 +249,7 @@ app.post('/api/recipes', AUTH.requireUser, AUTH.aiBudget('recipes', 30), async (
   }
 });
 
-app.post('/api/weekly', AUTH.requireUser, AUTH.aiBudget('weekly', 10), async (req, res) => {
+app.post('/api/weekly', AUTH.requireUser, requirePro, AUTH.aiBudget('weekly', 10), async (req, res) => {
   try {
     if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const payload = req.body && req.body.payload;
@@ -322,9 +333,52 @@ app.get('/api/owner/stats', AN.requireOwner, async (req, res) => {
   }
 });
 
+/* ── owner user management (v67) — grant/revoke FUEL Pro ────────────────
+   Billing is not wired yet: Pro is granted manually here (or via the
+   FUEL_PRO_EMAILS env list). Emails leave the server masked. */
+const ownerPlanLimiter = AUTH.rateLimit('owner-plan', 60, 15 * 60 * 1000);
+const maskEmail = (e) => {
+  const s = String(e || '');
+  const i = s.indexOf('@');
+  return i > 0 ? s.slice(0, Math.min(2, i)) + '•••' + s.slice(i) : '•••';
+};
+
+app.get('/api/owner/users', AN.requireOwner, async (req, res) => {
+  try {
+    const [users, lastActive] = await Promise.all([AUTH.listAll(), AN.lastActiveByHash()]);
+    const rows = users
+      .map((u) => ({
+        id: u.id,
+        email: maskEmail(u.email),
+        plan: u.plan,
+        storedPlan: u.storedPlan,
+        lastActive: lastActive[DB.uidHash(u.id)] || null,
+        createdAt: u.createdAt,
+      }))
+      .sort((a, b) => (b.lastActive || '').localeCompare(a.lastActive || '') || b.createdAt - a.createdAt);
+    res.json({ ok: true, users: rows });
+  } catch (e) {
+    console.error('[owner-users]', e.detail || e.message);
+    res.status(502).json({ error: 'users_failed', message: 'Could not load the user list right now.' });
+  }
+});
+
+app.post('/api/owner/set-plan', AN.requireOwner, ownerPlanLimiter, async (req, res) => {
+  try {
+    const { uid, plan } = req.body || {};
+    if (typeof uid !== 'string' || !uid) return res.status(400).json({ error: 'bad_uid', message: 'Missing user id.' });
+    if (plan !== 'pro' && plan !== 'free') return res.status(400).json({ error: 'bad_plan', message: 'Plan must be pro or free.' });
+    const u = await AUTH.setPlan(uid, plan);
+    res.json({ ok: true, id: u.id, plan: AUTH.planOf(u), storedPlan: u.plan || 'free' });
+  } catch (e) {
+    const code = e.message === 'no_user' ? 404 : 502;
+    res.status(code).json({ error: e.message || 'set_plan_failed', message: e.message === 'no_user' ? 'No such user.' : 'Could not change the plan right now.' });
+  }
+});
+
 /* ── accounts ───────────────────────────────────────────────────────── */
 const authLimiter = AUTH.rateLimit('auth', 120, 10 * 60 * 1000);
-const safeUser = (u) => ({ id: u.id, name: u.name, email: u.email, hasPin: !!u.pinHash, emailVerified: !!u.emailVerified });
+const safeUser = (u) => ({ id: u.id, name: u.name, email: u.email, hasPin: !!u.pinHash, emailVerified: !!u.emailVerified, plan: AUTH.planOf(u) });
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
   try {
@@ -580,7 +634,7 @@ app.post('/api/autobak', AUTH.requireUser, async (req, res) => {
   } catch (e) { console.error('[autobak-put]', e.detail || e.message); res.status(502).json({ error: 'autobak_failed', message: 'Backup failed — try again in a minute.' }); }
 });
 
-app.post('/api/mealplan', AUTH.requireUser, AUTH.aiBudget('meal', 20), async (req, res) => {
+app.post('/api/mealplan', AUTH.requireUser, requirePro, AUTH.aiBudget('meal', 20), async (req, res) => {
   try {
     if (!hasCoach) return res.status(503).json({ error: 'ai_not_configured', message: 'AI coach not configured yet.' });
     const payload = req.body && req.body.payload;

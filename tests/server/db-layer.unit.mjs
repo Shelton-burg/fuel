@@ -38,6 +38,7 @@ function makeFakePg() {
   function handle(sql, params = []) {
     const s = sql.trim().replace(/\s+/g, ' ');
     if (s.startsWith('CREATE TABLE')) return { rows: [] };
+    if (s.startsWith('ALTER TABLE')) return { rows: [] }; // lazy column adds — no-op in the mock
     let m;
     if ((m = s.match(/^INSERT INTO (\w+) \(([^)]+)\) VALUES \(([^)]+)\)( ON CONFLICT.*)?$/))) {
       const [, table, colsS, valsS, tail] = m;
@@ -108,10 +109,15 @@ const got = await DB.readUser('u_1');
 T(got && got.id === 'u_1' && got.email === 'a@fuel.test' && got.hash === 'h1' && got.salt === 's1', 'readUser roundtrips core fields');
 T(got.sessionVersion === 3 && got.createdAt === 1700000000000, 'sessionVersion + createdAt roundtrip');
 T(got.pinHash === 'ph' && got.slot === 'acct-u_1', 'extra JSONB fields roundtrip (pinHash, slot)');
-u.name = 'A2'; u.sessionVersion = 4;
+T(got.plan === 'free', 'plan defaults to free when the record has none (v67)');
+u.name = 'A2'; u.sessionVersion = 4; u.plan = 'pro';
 await DB.upsertUser(u);
 const got2 = await DB.readUser('u_1');
 T(got2.name === 'A2' && got2.sessionVersion === 4, 'upsert overwrites an existing row');
+T(got2.plan === 'pro', 'plan column roundtrips through upsert (v67)');
+u.plan = 'free';
+await DB.upsertUser(u);
+T((await DB.readUser('u_1')).plan === 'free', 'plan reverts to free');
 T((await DB.readUser('u_nope')) === null, 'readUser of a missing uid → null');
 const listed = await DB.listUsers();
 T(listed.length === 1 && listed[0].id === 'u_1', 'listUsers returns every row');
@@ -136,11 +142,12 @@ const rows = await DB.analyticsRows();
 T(rows.length === 2 && rows.every((r) => typeof r.count === 'number'), 'analyticsRows returns per-user aggregate rows');
 
 /* ── 5. migration idempotency ── */
-const u2 = { id: 'u_2', email: 'b@fuel.test', name: 'B', hash: 'h2', salt: 's2', sessionVersion: 1, createdAt: Date.now() };
+const u2 = { id: 'u_2', email: 'b@fuel.test', name: 'B', hash: 'h2', salt: 's2', sessionVersion: 1, createdAt: Date.now(), plan: 'pro' };
 const m1 = await DB.migrateUser(u2);
 T(m1 && m1.imported === true, 'migrateUser imports a gist user once');
 const m2 = await DB.migrateUser(u2);
 T(m2 && m2.skipped === true, 'migrateUser is idempotent (migrated flag)');
+T((await DB.readUser('u_2')).plan === 'pro', 'migrateUser carries the gist plan across (v67)');
 T(fake.tables.get('users').size === 2, 'exactly one users row per uid after repeated migration');
 u2.name = 'B2';
 await DB.upsertUser(u2);
@@ -165,6 +172,7 @@ T(DB.enabled() === false && DB.active() === false, 'without DATABASE_URL the lay
 const created = await AUTH.createAccount({ name: 'QA', email: 'qa@fuel.test', password: 'password-1' });
 const byDb = await DB.readUser(created.user.id);
 T(byDb && byDb.id === created.user.id && byDb.email === 'qa@fuel.test', 'readUser delegates to the gist(auth) store');
+T(byDb.plan === 'free', 'fallback gist records carry plan free (v67)');
 T((await DB.readUser('missing-uid')) === null, 'fallback readUser of a missing uid → null');
 await DB.putBlob(created.user.id, { payload: 'FB', keyHash: 'kh'.repeat(32), updatedAt: Date.now() });
 const fb = await DB.getBlob(created.user.id);

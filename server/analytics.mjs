@@ -432,5 +432,19 @@ export async function ownerStats({ fresh = false } = {}) {
 
 export function analyticsConfigured() { return true; }
 
+/** hash -> latest activity day (AU day key) — used by the owner Users tab.
+    Derived from the same aggregate days the dashboard already reads, so it
+    is as privacy-safe as the rest of the dashboard (hash only, no uid). */
+export async function lastActiveByHash() {
+  await readAll();
+  const out = {};
+  for (const [day, evs] of Object.entries(mem.days)) {
+    for (const cell of Object.values(evs || {})) {
+      for (const h of cell.u || []) if (!(h in out) || day > out[h]) out[h] = day;
+    }
+  }
+  return out;
+}
+
 // test hooks (plain-node unit test only — not part of the HTTP surface)
 export const __test = { mergeDays: mergeInto, auDay, peekDays: () => JSON.parse(JSON.stringify(mem.days)) };
