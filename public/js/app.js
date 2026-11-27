@@ -8,6 +8,7 @@ import { dayIdFor, PROGRAMS, PROGRAM_LIST, EX_LIB, exGroup } from './programs.js
 import * as ABK from './autobak.js';
 import { FUEL_RECIPES } from './recipes.js';
 import { fireEvent } from './analytics.js';
+import { calcCalories, macroSplit, ACTIVITY_MULT, ACTIVITY_LABELS } from './calcalc.js';
 
 const $ = (q, r = document) => r.querySelector(q);
 const $$ = (q, r = document) => [...r.querySelectorAll(q)];
@@ -45,7 +46,7 @@ let fastSelPreset = '16:8';
 let fastTimer = null;
 let foodCat = 'all'; // v59 — food section category filter
 
-const APP_BUILD = 'v67';
+const APP_BUILD = 'v68';
 
 /* ── FUEL Pro entitlement (v67) ─────────────────────────────────────────
    plan arrives on /api/auth/me + the login/register responses
@@ -114,6 +115,7 @@ let mpBusy = false;
 let goalsFrom = 'settings';
 
 $('#btn-open-goals').addEventListener('click', () => { goalsFrom = 'settings'; switchView('goals'); });
+$('#btn-open-calcalc').addEventListener('click', () => openCalCalc());
 
 $('#goals-body').addEventListener('click', (e) => {
   const t = e.target;
@@ -133,6 +135,7 @@ $('#goals-body').addEventListener('click', (e) => {
     toast(`Calorie target locked — ${fmt(k)} kcal`);
     return;
   }
+  if (t.closest('#btn-open-calcalc')) { openCalCalc(); return; }
   if (t.closest('#btn-clear-cals')) {
     S.clearKcalLock();
     const tt = S.computeTargets(S.getState().profile);
@@ -1109,6 +1112,97 @@ function showProUpsell() {
     </div>
   `);
   wrap.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
+}
+
+/* ══════════ calorie calculator (v68) — Mifflin-St Jeor, deterministic ══════════ */
+function calTargetApply(kcal) {
+  S.setManualKcal(kcal);
+  renderToday();
+  renderGoals();
+  vib(10);
+  toast(`Calorie target locked — ${fmt(kcal)} kcal`);
+}
+
+function openCalCalc() {
+  const p = S.getState().profile;
+  const startW = S.latestWeight()?.kg ?? p.weight ?? 85;
+  // map the stored activity multiplier back to the nearest tier (1..5)
+  const startTier = ACTIVITY_MULT.reduce(
+    (best, mult, i) => (Math.abs(mult - (p.activity || 1.55)) < Math.abs(ACTIVITY_MULT[best] - (p.activity || 1.55)) ? i : best),
+    2,
+  );
+
+  const card = ({ label, sub, kcal, m }) => `
+    <button class="cc-card" data-cc-kcal="${kcal}" type="button">
+      <div class="cc-top"><span class="cc-goal">${label}</span><span class="cc-sub">${sub}</span></div>
+      <div class="cc-kcal">${fmt(kcal)}<span class="cc-unit">kcal</span></div>
+      <div class="cc-macros"><span>P ${fmt(m.protein)} g</span><span>C ${fmt(m.carbs)} g</span><span>F ${fmt(m.fat)} g</span></div>
+    </button>`;
+
+  const paint = () => {
+    const w = +$('#cc-weight').value || 85;
+    const h = +$('#cc-height').value || 180;
+    const a = +$('#cc-age').value || 38;
+    const sex = $('#cc-sex').dataset.ccsex === 'female' ? 'female' : 'male';
+    const tier = +$('#cc-activity').value || 3;
+    const r = calcCalories({ weightKg: w, heightCm: h, age: a, sex, activity: tier });
+    $('#cc-bmr').textContent = `${fmt(r.bmr)} kcal`;
+    $('#cc-cards').innerHTML = [
+      card({ label: 'Lose', sub: '~0.5 kg/week', kcal: r.deficit, m: macroSplit(r.deficit, w) }),
+      card({ label: 'Maintain', sub: 'stay the same', kcal: r.tdee, m: macroSplit(r.tdee, w) }),
+      card({ label: 'Gain', sub: '~0.25 kg/week', kcal: r.bulk, m: macroSplit(r.bulk, w) }),
+    ].join('');
+  };
+
+  const { wrap, close } = openModal(`
+    <div class="modal-head">
+      <button class="icon-btn" data-close type="button"><svg><use href="#i-x"/></svg></button>
+      <div class="modal-title">Calorie calculator</div>
+    </div>
+    <div class="cc-body">
+      <p class="hint muted" style="margin:0 0 14px">Your stats → maintenance, deficit and bulk targets (Mifflin-St Jeor). Tap a card to lock it as your daily calorie target.</p>
+
+      <div class="cc-sex" id="cc-sex" data-ccsex="${p.sex === 'female' ? 'female' : 'male'}">
+        <button class="seg${p.sex !== 'female' ? ' sel' : ''}" data-ccsex-btn="male" type="button">Male</button>
+        <button class="seg${p.sex === 'female' ? ' sel' : ''}" data-ccsex-btn="female" type="button">Female</button>
+      </div>
+
+      <div class="field-2">
+        <label class="field"><span>Weight (kg)</span><input id="cc-weight" type="number" inputmode="decimal" min="30" max="250" step="0.1" value="${startW}"></label>
+        <label class="field"><span>Height (cm)</span><input id="cc-height" type="number" inputmode="numeric" min="100" max="250" value="${p.height || 180}"></label>
+      </div>
+      <div class="field-2">
+        <label class="field"><span>Age</span><input id="cc-age" type="number" inputmode="numeric" min="10" max="100" value="${p.age || 38}"></label>
+        <label class="field"><span>Activity</span>
+          <select id="cc-activity">
+            ${ACTIVITY_LABELS.map((l, i) => `<option value="${i + 1}"${i === startTier ? ' selected' : ''}>${l}</option>`).join('')}
+          </select></label>
+      </div>
+
+      <div class="cc-bmr-line muted sm">Basal metabolic rate (BMR): <b id="cc-bmr">— kcal</b></div>
+      <div class="cc-cards" id="cc-cards"></div>
+
+      <button class="btn ghost" data-close type="button">Cancel</button>
+    </div>
+  `);
+
+  wrap.querySelectorAll('[data-ccsex-btn]').forEach((b) => {
+    b.addEventListener('click', () => {
+      $('#cc-sex').dataset.ccsex = b.dataset.ccsexBtn;
+      wrap.querySelectorAll('[data-ccsex-btn]').forEach((x) => x.classList.toggle('sel', x === b));
+      paint();
+    });
+  });
+  wrap.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', close));
+  wrap.querySelectorAll('#cc-weight, #cc-height, #cc-age').forEach((i) => i.addEventListener('input', paint));
+  wrap.querySelector('#cc-activity').addEventListener('change', paint);
+  wrap.querySelector('#cc-cards').addEventListener('click', (e) => {
+    const c = e.target.closest('[data-cc-kcal]');
+    if (!c) return;
+    close();
+    calTargetApply(+c.dataset.ccKcal);
+  });
+  paint();
 }
 
 /* ══════════ portion modal (add · or edit an existing entry) ══════════ */
@@ -2250,6 +2344,7 @@ function renderGoals() {
         <input id="goal-cals" type="number" inputmode="numeric" min="800" max="8000" placeholder="leave blank — the calculator sets it" value="${st.goals.kcalLock ? st.goals.kcal : ''}"></label>
       <div class="chip-row wrap" style="margin-top:6px">
         <button class="btn ghost sm-btn" id="btn-set-cals" type="button">Set my calorie target</button>
+        <button class="btn ghost sm-btn" id="btn-open-calcalc" type="button">Calorie calculator</button>
         ${st.goals.kcalLock ? '<button class="link-btn" id="btn-clear-cals" type="button">Back to the calculator</button>' : ''}
       </div>
       <p class="hint muted">${st.goals.kcalLock

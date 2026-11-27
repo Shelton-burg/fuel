@@ -1441,3 +1441,28 @@ button.stat-chip:active { transform:scale(.96); }
 .pro-upsell .pu-h { margin:0 0 10px; font-size:17px; line-height:1.45; color:var(--text); }
 .pro-upsell .pu-sub { margin:0 0 18px; font-size:13.5px; line-height:1.55; color:var(--muted); }
 .pro-upsell .btn { width:100%; }
+
+/* ── calorie calculator (v68) ─────────────────────────────── */
+.cc-body { padding:0 2px; }
+.cc-sex { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+.cc-sex .seg {
+  padding:11px; border-radius:12px; font-size:14px; font-weight:700;
+  background:var(--panel-2); border:1px solid var(--line-2); color:var(--text-2);
+}
+.cc-sex .seg.sel { border-color:rgba(255,161,23,.55); color:var(--amber); background:var(--amber-soft); }
+.cc-bmr-line { margin:2px 0 12px; color:var(--text-2); }
+.cc-bmr-line b { color:var(--text); font-variant-numeric:tabular-nums; }
+.cc-cards { display:grid; gap:10px; margin-bottom:14px; }
+.cc-card {
+  text-align:left; width:100%; padding:14px 16px; border-radius:16px;
+  background:var(--panel-2); border:1px solid var(--line-2); color:var(--text);
+  display:block;
+}
+.cc-card:active { border-color:rgba(255,161,23,.55); transform:scale(.985); }
+.cc-top { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.cc-goal { font-size:15px; font-weight:700; }
+.cc-sub { font-size:12px; color:var(--muted); font-weight:600; }
+.cc-kcal { font-family:var(--font-num); font-size:30px; font-weight:800; font-variant-numeric:tabular-nums; margin:4px 0 6px; }
+.cc-unit { font-size:13px; color:var(--muted); font-weight:600; margin-left:7px; }
+.cc-macros { display:flex; gap:12px; font-size:12.5px; color:var(--text-2); font-weight:600; font-variant-numeric:tabular-nums; }
+.cc-macros span:first-child { color:var(--amber); }
