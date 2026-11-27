@@ -7,6 +7,7 @@ import { PROGRAMS, PROGRAM_LIST, dayIdFor, nextDayIdFor, EX_LIB, exGroup, exMeta
 import * as CH from './charts.js';
 import { photoPanelHTML, renderPhotoStrip } from './photos.js';
 import { fireEvent } from './analytics.js';
+import { exMedia, exIconHTML } from './exercise-media.js';
 
 const K = () => S.dayKey();
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -479,7 +480,7 @@ function homeHTML(p, s) {
   } else {
     const label = dayId ? p.days[dayId].label : `${p.days[nxt.id].label} (next up)`;
     const custom = S.planCustomised(p.id, planDay);
-    const exList = plan.map((x, i) => `<button class="ex-li" data-ex-edit="${i}" data-day="${planDay}" type="button"><span class="ex-n">${i + 1}</span><span class="ex-name">${esc(x.name)}</span><span class="ex-sr">${x.sets} × ${esc(x.reps)}</span><span class="ex-rest">${fmtRest(x.rest)}</span><svg class="ex-edit-ico"><use href="#i-edit"/></svg></button>`).join('');
+    const exList = plan.map((x, i) => `<button class="ex-li" data-ex-edit="${i}" data-day="${planDay}" type="button"><span class="ex-n">${i + 1}</span><span class="ex-name"><span class="ex-inline-ico" data-howto="${esc(x.name)}">${exIconHTML(x.name)}</span><span>${esc(x.name)}</span></span><span class="ex-sr">${x.sets} × ${esc(x.reps)}</span><span class="ex-rest">${fmtRest(x.rest)}</span><span class="ex-howto" data-howto="${esc(x.name)}" role="button" tabindex="0" aria-label="How to do ${esc(x.name)}">?</span><svg class="ex-edit-ico"><use href="#i-edit"/></svg></button>`).join('');
     today = `<div class="panel tcard hero">
       <div class="tc-head">
         <span class="tc-day">${dayId ? 'Today' : 'Rest day'} · ${esc(label)}</span>
@@ -696,8 +697,9 @@ function sessionHTML(p, s) {
     <div class="focus-card" data-ex="${curEi}" data-set="${curSi}">
       <div class="fc-top"><span class="fc-eyebrow">Set ${curSi + 1} of ${curEx.sets.length}</span>
         <button class="star-btn${S.isFavEx(curEx.name) ? ' on' : ''}" data-act="fav" data-ex="${esc(curEx.name)}" type="button" aria-label="Favourite ${esc(curEx.name)}"><svg><use href="#i-star"/></svg></button></div>
-      <div class="fc-name">${esc(curEx.name)}</div>
+      <div class="fc-name">${exIconHTML(curEx.name, 'fc-ico')}<span>${esc(curEx.name)}</span></div>
       <div class="fc-sub">Target ${esc(curEx.reps)} reps${tgt && tgt.from ? ` · last ${fmtN(tgt.from.w, 1)} kg × ${tgt.from.rep}` : lbl ? ` · last ${fmtN(lbl.lastW, 1)} kg × ${lbl.lastR}` : ''}</div>
+      <button class="link-btn fc-howto" data-howto="${esc(curEx.name)}" type="button">How to do it</button>
       <div class="fc-step">
         <button class="fc-btn" data-step="w-" type="button" aria-label="Less weight">−</button>
         <label class="fc-val"><input data-k="w" type="number" inputmode="decimal" step="0.5" min="0" value="${wVal}" placeholder="kg"><span>kg</span></label>
@@ -721,6 +723,7 @@ function sessionHTML(p, s) {
       const best = ex.sets.filter((st) => st.done && st.w).reduce((a, b) => (!a || b.w > a.w ? b : a), null);
       return `<button class="ex-collapsed${done ? ' done' : ''}" data-open="${ei}" type="button">
         <span class="ec-mark">${done ? '✓' : '○'}</span>
+        <span class="ec-icon">${exIconHTML(ex.name)}</span>
         <span class="ec-name">${esc(ex.name)}</span>
         <span class="ec-meta">${ex.sets.filter((st) => st.done).length}/${ex.sets.length} sets${best ? ` · ${fmtN(best.w, 1)} kg` : ''}</span>
         <svg class="hrow-chev"><use href="#i-chev"/></svg>
@@ -738,7 +741,7 @@ function sessionHTML(p, s) {
     }).join('');
     return `<div class="panel excard${done ? ' done' : ''}">
       <div class="ex-head">
-        <div><span class="ex-title">${esc(ex.name)}</span>
+        <div><span class="ex-title">${exIconHTML(ex.name)}<span>${esc(ex.name)}</span></span>
           <span class="ex-sub">${ex.sets.length} × ${esc(ex.reps)} · rest ${fmtRest(ex.rest)}</span></div>
         <span class="ex-head-r">${done ? '<span class="ex-done-chip">Done ✓</span>' : ''}
           <button class="ex-swap" data-act="exs" data-ex="${ei}" type="button" aria-label="Change ${esc(ex.name)}"><svg><use href="#i-edit"/></svg></button>
@@ -794,6 +797,8 @@ document.addEventListener('click', (e) => {
   }
   const pick = t.closest('[data-pick]');
   if (pick) { pickProgram(pick.dataset.pick); return; }
+  const howto = t.closest('[data-howto]');
+  if (howto) { openHowTo(howto.dataset.howto); return; }
   const exEdit = t.closest('[data-ex-edit]');
   if (exEdit) { openExSheet('swap', +exEdit.dataset.exEdit, exEdit.dataset.day); return; }
   const exAdd = t.closest('[data-ex-add]');
@@ -1016,7 +1021,7 @@ function openExSheet(mode, ei, dayId) {
   const close = () => back.remove();
 
   const rowHTML = (it, extra) => `<button class="food-row" data-xpick="${rows.length}" type="button">
-      <span class="food-thumb ph"><svg><use href="#i-dumbbell"/></svg></span>
+      <span class="food-thumb ex-thumb">${exIconHTML(it.name)}</span>
       <div class="food-main"><div class="food-name">${esc(it.name)}</div><div class="food-brand">${esc(extra || '')}</div></div>
     </button>`;
   const sect = (label, items, extra) => {
@@ -1296,6 +1301,22 @@ function openLocalModal(html) {
   document.body.appendChild(back);
   back.addEventListener('click', (e) => { if (e.target === back || e.target.closest('[data-close]')) back.remove(); });
   return { back, close: () => back.remove() };
+}
+function openHowTo(name) {
+  const m = exMedia(name);
+  const steps = m?.steps?.length ? m.steps.map((s, i) => `<li><span class="ht-n">${i + 1}</span><span>${esc(s)}</span></li>`).join('') : '';
+  const muscles = m?.muscles?.length ? `<div class="ht-muscles">${m.muscles.map((x) => `<span class="ht-chip">${esc(x)}</span>`).join('')}</div>` : '';
+  const frames = m?.f1
+    ? `<div class="ht-loop"><img class="ht-frame" src="${m.f0}" alt=""><img class="ht-frame ht-frame-2" src="${m.f1}" alt=""></div>`
+    : m?.f0 ? `<div class="ht-loop"><img class="ht-frame" src="${m.f0}" alt=""></div>` : '';
+  const body = m
+    ? `${frames}${muscles}${steps ? `<ol class="ht-steps">${steps}</ol>` : '<p class="muted sm">No step-by-step guide for this one — ask a trainer for form.</p>'}`
+    : `<div class="empty-state">No illustration for “${esc(name)}” yet.<span class="muted sm">We're building the library — form cues arrive soon.</span></div>`;
+  openLocalModal(`
+    <div class="modal-head"><button class="icon-btn" data-close type="button" aria-label="Close"><svg><use href="#i-x"/></svg></button><div class="modal-title">${esc(name)}</div></div>
+    ${body}
+    <p class="muted sm ht-credit">Move image from free-exercise-db (public domain).</p>
+  `);
 }
 function plateModal() {
   const s = todaySession();

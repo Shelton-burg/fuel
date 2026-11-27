@@ -891,7 +891,7 @@ button.stat-chip:active { transform:scale(.96); }
 .bad-txt { color: var(--bad); }
 
 /* ── your version of a program day (Train exercise editing) ─────────────── */
-.ex-li { grid-template-columns:22px 1fr auto auto 20px; width:100%; background:none; border:0; border-bottom:1px solid var(--line); color:var(--text); font:inherit; font-size:13.5px; text-align:left; cursor:pointer; }
+.ex-li { grid-template-columns:22px 1fr auto auto 20px 20px; width:100%; background:none; border:0; border-bottom:1px solid var(--line); color:var(--text); font:inherit; font-size:13.5px; text-align:left; cursor:pointer; }
 .ex-li:active { background:rgba(255,255,255,.04); }
 .ex-edit-ico { width:15px; height:15px; color:var(--muted); opacity:.85; }
 .add-ex { width:100%; margin-top:10px; }
@@ -1466,3 +1466,60 @@ button.stat-chip:active { transform:scale(.96); }
 .cc-unit { font-size:13px; color:var(--muted); font-weight:600; margin-left:7px; }
 .cc-macros { display:flex; gap:12px; font-size:12.5px; color:var(--text-2); font-weight:600; font-variant-numeric:tabular-nums; }
 .cc-macros span:first-child { color:var(--amber); }
+
+/* ── exercise media icons + How-to detail (v69) ─────────────────────────── */
+.ex-icon {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:32px; height:32px; border-radius:50%; overflow:hidden;
+  background:var(--panel-2); border:1px solid var(--line); flex:0 0 auto; vertical-align:middle;
+}
+.ex-icon img { width:100%; height:100%; object-fit:cover; display:block; }
+.ex-icon-fallback {
+  font-weight:700; font-size:14px; color:var(--amber); font-variant-numeric:tabular-nums;
+}
+/* inline (plan-day list) */
+.ex-inline-ico { display:inline-flex; margin-right:8px; vertical-align:middle; }
+.ex-inline-ico .ex-icon { width:26px; height:26px; }
+/* library sheet thumb */
+.ex-thumb { display:flex; align-items:center; justify-content:center; }
+.ex-thumb .ex-icon { width:44px; height:44px; border-radius:12px; }
+.ex-thumb .ex-icon-fallback { width:44px; height:44px; border-radius:12px; font-size:18px; }
+/* focus card */
+.fc-name { display:flex; align-items:center; gap:10px; }
+.fc-ico { width:40px; height:40px; font-size:16px; }
+.fc-howto { margin-top:6px; padding:0; font-size:12.5px; }
+/* collapsed session row */
+.ex-collapsed .ec-icon { display:inline-flex; flex:0 0 auto; }
+.ex-collapsed .ec-icon .ex-icon { width:30px; height:30px; }
+/* expanded excard title */
+.ex-title { display:flex; align-items:center; gap:8px; }
+.ex-title > span:last-child { flex:0 1 auto; }
+/* How-to affordance on plan rows */
+.ex-howto {
+  width:20px; height:20px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+  font-size:12px; font-weight:700; color:var(--amber); background:var(--amber-soft); border:1px solid var(--line);
+  cursor:pointer; line-height:1;
+}
+.ex-howto:active { transform:scale(.92); }
+
+/* How-to detail modal */
+.ht-loop {
+  position:relative; width:100%; aspect-ratio:850/567; border-radius:14px; overflow:hidden;
+  background:var(--panel-2); border:1px solid var(--line); margin-bottom:12px;
+}
+.ht-frame { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.ht-frame-2 { animation:htFade 3s ease-in-out infinite; }
+@keyframes htFade { 0%, 45% { opacity:0; } 50%, 95% { opacity:1; } 100% { opacity:0; } }
+.ht-muscles { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
+.ht-chip {
+  font-size:11.5px; font-weight:600; color:var(--text-2);
+  background:var(--panel-2); border:1px solid var(--line); border-radius:999px; padding:3px 10px;
+}
+.ht-steps { margin:0 0 12px; padding:0; list-style:none; display:grid; gap:9px; }
+.ht-steps li { display:flex; gap:10px; font-size:13.5px; line-height:1.45; color:var(--text); }
+.ht-steps .ht-n {
+  flex:0 0 auto; width:22px; height:22px; border-radius:50%; background:var(--amber-soft);
+  color:var(--amber); font-weight:700; font-size:12px; display:inline-flex; align-items:center; justify-content:center; margin-top:1px;
+}
+.ht-credit { margin:4px 0 0; }
+
