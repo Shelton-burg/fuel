@@ -46,7 +46,7 @@ let fastSelPreset = '16:8';
 let fastTimer = null;
 let foodCat = 'all'; // v59 — food section category filter
 
-const APP_BUILD = 'v69';
+const APP_BUILD = 'v70';
 
 /* ── FUEL Pro entitlement (v67) ─────────────────────────────────────────
    plan arrives on /api/auth/me + the login/register responses

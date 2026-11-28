@@ -116,9 +116,29 @@ const norm = (n) => String(n || '').toLowerCase()
   .replace(/[^a-z0-9]+/g, '-')
   .replace(/^-+|-+$/g, '');
 
+// Slugs that ship a bundled movement animation (public/exercises/<slug>-anim.mp4).
+// Frames are AI-generated (Higgsfield) stills — no provenance chain, no attribution owed.
+const ANIM_SLUGS = new Set([
+  'bench-press',
+  'back-squat',
+  'deadlift',
+  'barbell-curl',
+  'overhead-press',
+  'lat-pulldown',
+  'dumbbell-shoulder-press',
+  'romanian-deadlift',
+  'leg-press',
+]);
+
 // Look up media for an exercise name (returns null when unmapped — caller renders a monogram).
 export function exMedia(name) {
   return EX_MEDIA[norm(name)] || null;
+}
+
+// Returns the bundled animation video path for a name, or null when none ships.
+export function exAnim(name) {
+  const slug = norm(name);
+  return ANIM_SLUGS.has(slug) ? `/exercises/${slug}-anim.mp4` : null;
 }
 
 // Small circular icon + monogram-fallback HTML for an exercise name.

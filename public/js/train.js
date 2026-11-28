@@ -7,7 +7,7 @@ import { PROGRAMS, PROGRAM_LIST, dayIdFor, nextDayIdFor, EX_LIB, exGroup, exMeta
 import * as CH from './charts.js';
 import { photoPanelHTML, renderPhotoStrip } from './photos.js';
 import { fireEvent } from './analytics.js';
-import { exMedia, exIconHTML } from './exercise-media.js';
+import { exMedia, exAnim, exIconHTML } from './exercise-media.js';
 
 const K = () => S.dayKey();
 const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -1304,11 +1304,15 @@ function openLocalModal(html) {
 }
 function openHowTo(name) {
   const m = exMedia(name);
+  const anim = exAnim(name);
   const steps = m?.steps?.length ? m.steps.map((s, i) => `<li><span class="ht-n">${i + 1}</span><span>${esc(s)}</span></li>`).join('') : '';
   const muscles = m?.muscles?.length ? `<div class="ht-muscles">${m.muscles.map((x) => `<span class="ht-chip">${esc(x)}</span>`).join('')}</div>` : '';
-  const frames = m?.f1
-    ? `<div class="ht-loop"><img class="ht-frame" src="${m.f0}" alt=""><img class="ht-frame ht-frame-2" src="${m.f1}" alt=""></div>`
-    : m?.f0 ? `<div class="ht-loop"><img class="ht-frame" src="${m.f0}" alt=""></div>` : '';
+  // Native animation when a bundled clip ships; otherwise the 2-frame crossfade stills.
+  const frames = anim
+    ? `<div class="ht-loop ht-video"><video class="ht-video-el" src="${anim}" autoplay muted loop playsinline controls></video></div>`
+    : m?.f1
+      ? `<div class="ht-loop"><img class="ht-frame" src="${m.f0}" alt=""><img class="ht-frame ht-frame-2" src="${m.f1}" alt=""></div>`
+      : m?.f0 ? `<div class="ht-loop"><img class="ht-frame" src="${m.f0}" alt=""></div>` : '';
   const body = m
     ? `${frames}${muscles}${steps ? `<ol class="ht-steps">${steps}</ol>` : '<p class="muted sm">No step-by-step guide for this one — ask a trainer for form.</p>'}`
     : `<div class="empty-state">No illustration for “${esc(name)}” yet.<span class="muted sm">We're building the library — form cues arrive soon.</span></div>`;
